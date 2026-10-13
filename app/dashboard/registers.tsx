@@ -34,6 +34,7 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [saveDraft, setSaveDraft] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [viewing, setViewing] = useState<any>(null);
   const [suggest, setSuggest] = useState<Array<{ description: string; hsn: string | null; rate: string; gstRate: string }>>([]);
   const [cloneNum, setCloneNum] = useState("");
@@ -99,6 +100,35 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
     setLines((xs) => xs.map((l, j) => (j === i ? { ...l, ...patch } : l)));
   }
 
+  function openNew() {
+    setEditingId(null);
+    setLines([blankLine()]);
+    setSaveDraft(false);
+    setShowForm(true);
+  }
+
+  function openEdit(inv: any) {
+    setEditingId(inv.id);
+    setForm({
+      clientId: inv.clientId, invoiceNumber: inv.invoiceNumber,
+      invoiceDate: String(inv.invoiceDate).slice(0, 10), period: inv.period,
+      party: kind === "sales" ? (inv.customerName ?? "") : (inv.supplierName ?? ""),
+      partyGstin: kind === "sales" ? (inv.customerGstin ?? "") : (inv.supplierGstin ?? ""),
+      placeOfSupply: inv.placeOfSupply ?? "", invoiceType: inv.invoiceType ?? "B2B",
+      discount: inv.discount ? String(inv.discount) : "", reverseCharge: Boolean(inv.reverseCharge),
+      shipToName: inv.shipToName ?? "", shipToGstin: inv.shipToGstin ?? "",
+      shipToAddress: inv.shipToAddress ?? "", transporterName: inv.transporterName ?? "",
+      transporterId: inv.transporterId ?? "", vehicleNo: inv.vehicleNo ?? "", ewayBillNo: inv.ewayBillNo ?? ""
+    });
+    setLines((inv.items ?? []).map((l: { description: string; hsn: string | null; quantity: string; rate: string; gstRate: string }) => ({
+      description: l.description, hsn: l.hsn ?? "",
+      quantity: String(l.quantity), rate: String(l.rate), gstRate: String(l.gstRate)
+    })));
+    setSaveDraft(inv.status === "DRAFT");
+    setViewing(null);
+    setShowForm(true);
+  }
+
   // Item master suggestions (auto-learned from saved bills).
   async function fetchSuggest(q: string) {
     if (!org || q.trim().length < 2) { setSuggest([]); return; }
@@ -147,12 +177,17 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
         body.supplierName = form.party.trim() || "Supplier";
         body.supplierGstin = form.partyGstin.trim() || null;
       }
-      await apiFetch(`/api/v1/organizations/${org!.id}/${kind}`, { method: "POST", body: JSON.stringify(body) });
+      if (editingId) {
+        await apiFetch(`/api/v1/organizations/${org!.id}/${kind}/${editingId}`, { method: "PATCH", body: JSON.stringify(body) });
+      } else {
+        await apiFetch(`/api/v1/organizations/${org!.id}/${kind}`, { method: "POST", body: JSON.stringify(body) });
+      }
       setForm({ ...form, invoiceNumber: "", party: "", partyGstin: "" });
       setLines([blankLine()]);
       setSaveDraft(false);
+      setEditingId(null);
       setShowForm(false);
-      push("success", saveDraft ? "Draft saved — post it to include in GST." : `Saved — ${filled.length} item(s), taxes computed server-side.`);
+      push("success", editingId ? "Invoice updated — taxes recomputed." : saveDraft ? "Draft saved — post it to include in GST." : `Saved — ${filled.length} item(s), taxes computed server-side.`);
       void load();
     } catch (e) { push("error", e instanceof ApiError ? e.message : "Save failed"); }
     finally { setSaving(false); }
@@ -203,7 +238,7 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
       <PageHeader
         title={title}
         sub="Who bought what, line by line · taxes split server-side"
-        actions={<><Button size="sm" onClick={() => setShowForm(true)}><Plus size={15} /> New invoice</Button><label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-ink transition-colors hover:border-primary hover:text-primary"><Upload size={15} /> Import Excel/CSV<input type="file" accept=".csv,.xls,.xlsx" className="hidden" onChange={(e) => void importFile(e.target.files?.[0])} /></label></>}
+        actions={<><Button size="sm" onClick={openNew}><Plus size={15} /> New invoice</Button><label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-ink transition-colors hover:border-primary hover:text-primary"><Upload size={15} /> Import Excel/CSV<input type="file" accept=".csv,.xls,.xlsx" className="hidden" onChange={(e) => void importFile(e.target.files?.[0])} /></label></>}
       />
       <div className="flex flex-wrap items-center gap-2">
         <Select value={clientFilter} onChange={(e) => chooseClient(e.target.value)} className="!w-auto">
@@ -216,7 +251,7 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
         <Button size="sm" variant="outline" onClick={() => void load()}>Apply filters</Button>
       </div>
       {showForm ? (
-      <Modal title={`New ${kind === "sales" ? "sales" : "purchase"} invoice`} onClose={() => setShowForm(false)} wide>
+      <Modal title={editingId ? `Edit ${kind === "sales" ? "sales" : "purchase"} invoice` : `New ${kind === "sales" ? "sales" : "purchase"} invoice`} onClose={() => { setShowForm(false); setEditingId(null); }} wide>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Client"><Select value={form.clientId} onChange={(e) => setForm({ ...form, clientId: e.target.value })}>{clients.map((c) => <option key={c.id} value={c.id}>{c.businessName}</option>)}</Select></Field>
           <Field label="Invoice no."><TextInput value={form.invoiceNumber} onChange={(e) => setForm({ ...form, invoiceNumber: e.target.value })} placeholder="S-1024" /></Field>
@@ -277,8 +312,8 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
           <p className="tnum text-sm text-ink-soft">Items total: <strong className="text-ink">{inr(itemsTotal)}</strong></p>
           <label className="flex items-center gap-2 text-sm text-ink-soft"><input type="checkbox" checked={saveDraft} onChange={(e) => setSaveDraft(e.target.checked)} className="h-4 w-4 accent-primary" /> Save as draft</label>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setShowForm(false)}>Cancel</Button>
-            <Button onClick={add} disabled={saving}><Plus size={15} /> {saving ? "Saving…" : "Save invoice"}</Button>
+            <Button variant="outline" onClick={() => { setShowForm(false); setEditingId(null); }}>Cancel</Button>
+            <Button onClick={add} disabled={saving}><Plus size={15} /> {saving ? "Saving…" : editingId ? "Update invoice" : "Save invoice"}</Button>
           </div>
         </div>
       </Modal>
@@ -336,6 +371,7 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
             <div className="flex justify-between text-base font-bold text-ink"><span>Total</span><span>{inr(Number(viewing.totalValue))}</span></div>
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
+            <Button size="sm" variant="outline" onClick={() => openEdit(viewing)}>✏️ Edit invoice</Button>
             {viewing.status === "DRAFT" ? <Button size="sm" variant="secondary" onClick={() => void postInvoice(viewing.id)}>Post invoice</Button> : null}
             {kind === "sales" ? <Link href={`/dashboard/sales/print/${viewing.id}`}><Button size="sm" variant="outline">🖨 Print / PDF</Button></Link> : null}
             <div className="flex items-center gap-1.5 text-sm">
