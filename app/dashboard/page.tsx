@@ -83,7 +83,7 @@ export default function DashboardHome() {
           className="rounded-[1.75rem] px-5 pb-10 pt-5 text-white shadow-pop"
           style={{
             backgroundImage:
-              "radial-gradient(rgba(255,255,255,0.28) 1.6px, transparent 1.6px), radial-gradient(120% 90% at 85% -10%, rgba(196,181,253,0.5) 0%, transparent 55%), radial-gradient(110% 85% at -10% 110%, rgba(34,211,238,0.35) 0%, transparent 60%), linear-gradient(140deg, #2E1065 0%, #4F46E5 55%, #6D28D9 130%)",
+              "radial-gradient(rgba(255,255,255,0.30) 1.6px, transparent 1.6px), radial-gradient(120% 90% at 85% -10%, rgba(233,213,255,0.55) 0%, transparent 55%), radial-gradient(110% 85% at -10% 110%, rgba(165,243,252,0.4) 0%, transparent 60%), linear-gradient(140deg, #4C1D95 0%, #6D28D9 55%, #8B5CF6 130%)",
             backgroundSize: "20px 20px, cover, cover, cover"
           }}
         >
@@ -103,9 +103,9 @@ export default function DashboardHome() {
           <p className="flex items-center gap-1.5 text-[13px] font-medium text-ink-faint"><span className="h-1.5 w-1.5 rounded-full bg-ink-faint" /> Needs your attention</p>
           <div className="mt-2.5 grid grid-cols-2 gap-2.5">
             {tiles.map((t) => (
-              <Link key={t.label} href={t.href} className={`${t.bg} rounded-2xl border ${t.border} p-3.5`}>
-                <p className={`text-[13px] font-semibold ${t.text}`}>{t.icon} {t.label}</p>
-                <p className={`tnum mt-0.5 text-[26px] font-bold ${t.text}`}>{t.value}</p>
+              <Link key={t.label} href={t.href} className={`${t.bg} rounded-2xl border ${t.border} p-2.5`}>
+                <p className={`text-[12px] font-semibold ${t.text}`}>{t.icon} {t.label}</p>
+                <p className={`tnum mt-0.5 text-[22px] font-bold ${t.text}`}>{t.value}</p>
                 <p className={`text-[11px] ${t.text} opacity-70`}>{t.sub}</p>
               </Link>
             ))}
