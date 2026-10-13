@@ -1,0 +1,137 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+::selection {
+  background: #fde68a;
+  color: #092c4b;
+}
+
+body {
+  background: #f6f8fb;
+  color: #1e293b;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Tabular numerals for financial figures */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* Refined focus visibility */
+:focus-visible {
+  outline: 2px solid #0f4c81;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Data tables */
+.table-premium thead th {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748b;
+  font-weight: 600;
+  text-align: left;
+  padding: 0.65rem 1rem;
+  background: #edf3f9;
+  white-space: nowrap;
+}
+.table-premium tbody td {
+  padding: 0.75rem 1rem;
+  border-top: 1px solid #eef2f7;
+  vertical-align: middle;
+}
+.table-premium td.tnum {
+  white-space: nowrap;
+}
+.table-premium tbody tr {
+  transition: background 0.12s ease;
+}
+.table-premium tbody tr:hover {
+  background: #f4f8fc;
+}
+
+/* Skeleton shimmer */
+@keyframes shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+.skeleton-shimmer {
+  background: linear-gradient(90deg, #eef2f7 25%, #f8fafc 50%, #eef2f7 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+/* Toast entrance */
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.toast-in {
+  animation: toast-in 0.18s ease-out;
+}
+
+/* Modal entrance */
+@keyframes modal-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.modal-in {
+  animation: modal-in 0.18s ease-out;
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.fade-in {
+  animation: fade-in 0.15s ease-out;
+}
+
+/* Dotted texture for the mobile hero */
+.dot-grid {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.16) 1.5px, transparent 1.5px);
+  background-size: 22px 22px;
+}
+
+/* Slim scrollbars for nav panes */
+.slim-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.slim-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+
+/* Sidebar link */
+.side-link {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  border-radius: 0.625rem;
+  padding: 0.55rem 0.8rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #475569;
+  transition: all 0.12s ease;
+  white-space: nowrap;
+}
+.side-link:hover {
+  background: #eef4fa;
+  color: #0f4c81;
+}
+.side-link.active {
+  background: linear-gradient(135deg, #155c96 0%, #0c3b64 100%);
+  color: #fff;
+  box-shadow: 0 4px 12px -2px rgba(9, 44, 75, 0.45);
+}
+.side-link.active svg {
+  color: #f4b400;
+}
