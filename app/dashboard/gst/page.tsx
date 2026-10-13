@@ -52,7 +52,18 @@ export default function GstPage() {
           <Field label="Period"><TextInput value={period} onChange={(e) => setPeriod(e.target.value)} placeholder="2026-09" /></Field>
           <Button onClick={load}>Generate summary</Button>
           {data ? <a className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-ink transition-colors hover:border-primary hover:text-primary" href={`${API_URL}/api/v1/organizations/${org.id}/clients/${clientId}/gst/export?period=${period}`}>Export CSV</a> : null}
+          {data ? <a className="inline-flex items-center rounded-lg border border-primary/40 bg-primary-50 px-4 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary-100" href={`${API_URL}/api/v1/organizations/${org.id}/clients/${clientId}/gst/gstr1.json?period=${period}`}>GSTR-1 JSON</a> : null}
         </div>
+        <details className="mt-3 rounded-lg bg-background px-3 py-2 text-[13px] text-ink-soft">
+          <summary className="cursor-pointer font-medium text-ink">How to file with this JSON</summary>
+          <ol className="mt-1.5 list-decimal space-y-1 pl-5">
+            <li><strong>GSTR-1 JSON</strong> matches the portal offline-tool format (B2B / B2CL / B2CS + HSN summary).</li>
+            <li>Open the <strong>official GST offline tool</strong>, import it and run its validation.</li>
+            <li>Fix anything flagged there, generate the summary file in the tool.</li>
+            <li>Upload on <strong>gst.gov.in</strong> → submit → file. Then mark the return Filed here.</li>
+          </ol>
+          <p className="mt-1.5">We never file for you and never fake a filing — preparation data only.</p>
+        </details>
       </Card>
       {!data ? <EmptyState title="Pick a client and period" hint="The workspace shows turnover, output tax, claimable ITC, warnings and a filing checklist." /> : (
         <>
