@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { Avatar } from "@/components/ui/primitives";
+import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
 import { cn } from "@/lib/cn";
 
 const NAV = [
@@ -32,7 +33,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { me, loading, logout } = useAuth();
   const path = usePathname();
   const [open, setOpen] = useState(false);
-  if (loading) return <main className="flex min-h-screen items-center justify-center"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-600 to-primary-800 text-lg font-bold text-white shadow-pop"><span className="animate-bounce">হি</span></span></main>;
+  if (loading) return <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8"><DashboardSkeleton /></main>;
   if (!me) { if (typeof window !== "undefined") window.location.href = "/login"; return null; }
   const org = me.organizations[0];
   const isActive = (href: string) => (href === "/dashboard" ? path === href : path.startsWith(href));

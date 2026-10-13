@@ -105,11 +105,11 @@ function OvHeader({ action }: { action?: React.ReactNode }) {
 
   const ovCards: OvCardDef[] = [
     { label: "Total Clients", value: String(data.activeClients), sub: `${data.businessOverview.length} on books`, href: "/dashboard/clients", strip: "linear-gradient(90deg,#7C3AED,#4F46E5)", num: "text-violet-700", chip: "bg-violet-100 text-violet-700", icon: Users },
-    { label: "Sales Turnover", value: inr(ovSum.sales), sub: `${ovSum.salesCount} entries`, href: "/dashboard/sales", strip: "linear-gradient(90deg,#14B8A6,#0D9488)", num: "text-teal-700", chip: "bg-teal-100 text-teal-700", icon: ShoppingCart },
+    { label: "Client Turnover", value: inr(ovSum.sales), sub: `shopkeepers' sales · ${ovSum.salesCount} entries`, href: "/dashboard/sales", strip: "linear-gradient(90deg,#14B8A6,#0D9488)", num: "text-teal-700", chip: "bg-teal-100 text-teal-700", icon: ShoppingCart },
     { label: "Fees to Collect", value: inr(ovSum.outstanding), sub: `of ${inr(ovSum.billed)} billed`, href: "/dashboard/fees", strip: "linear-gradient(90deg,#F59E0B,#D97706)", num: "text-amber-700", chip: "bg-amber-100 text-amber-700", icon: Wallet },
     { label: "Docs Pending", value: String(ovSum.docs), sub: "across clients", href: "/dashboard/documents", strip: "linear-gradient(90deg,#3B82F6,#1D4ED8)", num: "text-blue-700", chip: "bg-blue-100 text-blue-700", icon: FileUp },
     { label: "Open Tasks", value: String(ovSum.tasks), sub: "filings pending", href: "/dashboard/tasks", strip: "linear-gradient(90deg,#F43F5E,#BE123C)", num: "text-rose-700", chip: "bg-rose-100 text-rose-700", icon: AlarmClock },
-    { label: "Fees Received", value: inr(ovSum.paid), sub: "collected so far", href: "/dashboard/fees", strip: "linear-gradient(90deg,#10B981,#047857)", num: "text-emerald-700", chip: "bg-emerald-100 text-emerald-700", icon: BadgeCheck }
+    { label: "My Revenue", value: inr(ovSum.paid), sub: "my fee income collected", href: "/dashboard/fees", strip: "linear-gradient(90deg,#10B981,#047857)", num: "text-emerald-700", chip: "bg-emerald-100 text-emerald-700", icon: BadgeCheck }
   ];
 
   const tiles = [
@@ -250,7 +250,7 @@ function OvHeader({ action }: { action?: React.ReactNode }) {
           <Card className="lg:col-span-3">
             <CardHeader
               title="Turnover trend"
-              sub={`Last 6 months · sales ${inr(months.reduce((a, m) => a + m.salesTotal, 0))}`}
+              sub={`Clients' invoices · last 6 months · sales ${inr(months.reduce((a, m) => a + m.salesTotal, 0))}`}
               action={<span className="flex items-center gap-3 text-xs font-medium text-ink-soft"><span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-primary" /> Sales</span><span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-secondary" /> Purchases</span></span>}
             />
             <div className="h-64">
