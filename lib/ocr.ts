@@ -151,7 +151,7 @@ export class ScanCancelled extends Error {
   constructor() { super("Scan cancelled"); this.name = "ScanCancelled"; }
 }
 
-const MAX_DIM = 1000;
+const MAX_DIM = 800;
 const MAX_BYTES = 8 * 1024 * 1024;
 
 /** Downscale + grayscale large camera photos (3-5x faster OCR, same bill accuracy). */
