@@ -100,33 +100,47 @@ export function parseInvoiceText(text: string): ScannedInvoice {
   const taxLn = nearKeyword(lines, ["taxable", "sub total", "subtotal", "assessable"]);
   const taxable = lastAmount(taxLn);
 
-  // Item lines — two shapes:
-  //  A) full table row: "Desc HSN qty x rate gst% amount"
-  //  B) short row: "Desc qty x rate" (at line end)
+  // Item lines — tolerant to real OCR wobble (spacing, x/X/×/*, glued tokens).
+  const NOISE = /total|tax|gst|discount|round|amount|invoice|date|cgst|sgst|igst|taxable|grand|description|^s\.?\s?no\.?|^sl\.?\s?no\.?|qty|hsn|balance|payment/i;
   const ALLOWED_GST = [0, 0.1, 0.25, 1, 1.5, 3, 5, 7.5, 12, 18, 28];
   const itemLines: ScannedLine[] = [];
   const pushLine = (desc: string, hsn: string, qty: number, rate: number, gst: number | null, conf: number) => {
     if (itemLines.length >= 8 || !(qty > 0) || !(rate >= 0)) return;
+    const clean = desc.replace(/^[\d\s\-.)]+/, "").trim().slice(0, 120);
+    if (clean.length < 2) return;
     itemLines.push({
-      description: { value: desc.trim().slice(0, 120), confidence: conf },
+      description: { value: clean, confidence: conf },
       quantity: { value: qty, confidence: 60 },
       rate: { value: rate, confidence: 60 },
       hsn: { value: hsn, confidence: hsn ? 65 : 0 },
       gstRate: { value: gst ?? 18, confidence: gst !== null && ALLOWED_GST.includes(gst) ? 60 : 0 }
     });
   };
-  for (const ln of lines) {
-    if (/total|tax|gst|discount|round|amount|invoice|date|cgst|sgst|igst|taxable|grand/i.test(ln)) continue;
-    const full = ln.match(/^(.{3,60}?)\s+(\d{4,8})\s+(\d+(?:\.\d+)?)\s*[xX×]\s*([\d,]+(?:\.\d{1,2})?)\s+(\d+(?:\.\d+)?)\s+([\d,]+(?:\.\d{1,2})?)\s*$/);
+  const closestGst = (g: number): number | null => {
+    let best: number | null = null;
+    for (const r of ALLOWED_GST) {
+      if (Math.abs(r - g) <= 0.51 && (best === null || Math.abs(r - g) < Math.abs(best - g))) best = r;
+    }
+    return best;
+  };
+  for (const raw of lines) {
+    // Normalize separators: × * ✕ → x ; collapse whitespace.
+    const ln = raw.replace(/[×✕*]/g, "x").replace(/\s+/g, " ").trim();
+    if (ln.length < 5 || NOISE.test(ln)) continue;
+    // A) full table row: "Desc HSN qty x rate gst amount" (HSN may glue to qty).
+    const full = ln.match(/^(.{2,70}?)\s+(\d{4,8})\s*?(\d+(?:\.\d+)?)\s*x\s*([\d,]+(?:\.\d{1,2})?)\s+(\d+(?:\.\d+)?)\s+([\d,]+(?:\.\d{1,2})?)\s*$/);
     if (full) {
       const qty = num(full[3]!), rate = num(full[4]!), amt = num(full[6]!);
-      if (Math.abs(qty * rate - amt) > Math.max(1, amt * 0.02)) continue; // amount must agree
-      const g = Number(full[5]);
-      pushLine(full[1]!, full[2]!, qty, rate, ALLOWED_GST.includes(g) ? g : null, 55);
-      continue;
+      if (Math.abs(qty * rate - amt) <= Math.max(2, amt * 0.05)) {
+        pushLine(full[1]!, full[2]!, qty, rate, closestGst(Number(full[5])), 55);
+        continue;
+      }
     }
-    const short = ln.match(/^(.{3,60}?)\s+(\d+(?:\.\d+)?)\s*[xX×]\s*([\d,]+(?:\.\d{1,2})?)\s*$/);
-    if (short) pushLine(short[1]!, "", num(short[2]!), num(short[3]!), null, 40);
+    // B) short row anywhere in line: "Desc qty x rate".
+    const short = ln.match(/^(.{2,70}?)\s+(\d+(?:\.\d+)?)\s*x\s*([\d,]+(?:\.\d{1,2})?)/);
+    if (short && !/^\d/.test(short[1]!)) {
+      pushLine(short[1]!, "", num(short[2]!), num(short[3]!), null, 40);
+    }
   }
 
   const confs = [invConf, date.confidence, partyConf, total.confidence, taxable.confidence].filter((c) => c > 0);

@@ -42,6 +42,7 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
   const [cloneDate, setCloneDate] = useState(() => todayISO());
   const [scan, setScan] = useState<{ pct: number; status: string } | null>(null);
   const [scanFile, setScanFile] = useState<File | null>(null);
+  const [scanText, setScanText] = useState("");
   const [fieldConf, setFieldConf] = useState<Record<string, number>>({});
 
   const itemsTotal = lines.reduce((a, l) => a + lineAmount(l), 0);
@@ -115,6 +116,7 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
     setLines([blankLine()]);
     setSaveDraft(false);
     setScanFile(null);
+    setScanText("");
     setFieldConf({});
     setShowForm(true);
   }
@@ -177,6 +179,7 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
       partyGstin: s.partyGstin.confidence
     };
     setFieldConf(conf);
+    setScanText(s.rawText);
     setForm((f) => ({
       ...f,
       invoiceNumber: s.invoiceNumber.value || f.invoiceNumber,
@@ -362,6 +365,12 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
             </div>
             <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${scan.pct}%` }} /></div>
           </div>
+          ) : null}
+          {scanText ? (
+          <details className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs">
+            <summary className="cursor-pointer font-medium text-ink-soft">What the camera read (debug — share if items miss)</summary>
+            <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap text-ink-faint">{scanText}</pre>
+          </details>
           ) : null}
         </div>
         ) : null}
