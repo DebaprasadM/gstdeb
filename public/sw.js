@@ -3,7 +3,7 @@
  * - Static assets (_next/static, icons): cache-first.
  * - NEVER caches /api/* (auth + financial data always go to network).
  */
-const VERSION = "hk-v1";
+const VERSION = "hk-v2";
 const STATIC_CACHE = `hk-static-${VERSION}`;
 const PAGES_CACHE = `hk-pages-${VERSION}`;
 const SHELL_FALLBACK = "/dashboard";
