@@ -16,13 +16,35 @@ export class ApiError extends Error {
   }
 }
 
+/** True when the server rejected us for auth/session reasons (not app bugs). */
+export function isAuthFailure(e: unknown): boolean {
+  if (!(e instanceof ApiError)) return false;
+  if (e.status === 401) return true;
+  return e.status === 403 && /csrf|session|authenticated|forbidden/i.test(e.message);
+}
+
+/** Send the user to login once (avoids redirect loops on public pages). */
+export function redirectToLogin(reason: string) {
+  if (typeof window === "undefined") return;
+  const path = window.location.pathname;
+  if (path.startsWith("/login") || path.startsWith("/submit") || path === "/") return;
+  window.location.href = `/login?reason=${reason}`;
+}
+
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   const csrf = getCsrf();
   if (csrf && init?.method && init.method !== "GET") headers["x-csrf-token"] = csrf;
   const res = await fetch(`${API_URL}${path}`, { credentials: "include", ...init, headers: { ...headers, ...(init?.headers as Record<string, string>) } });
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new ApiError(res.status, body?.error?.code ?? "ERROR", body?.error?.message ?? `API ${res.status}`);
+  if (!res.ok) {
+    const err = new ApiError(res.status, body?.error?.code ?? "ERROR", body?.error?.message ?? `API ${res.status}`);
+    // Mutations fail auth/CSRF checks when the session died (new login fixes it).
+    if (init?.method && init.method !== "GET" && isAuthFailure(err)) {
+      redirectToLogin("session");
+    }
+    throw err;
+  }
   return body as T;
 }
 

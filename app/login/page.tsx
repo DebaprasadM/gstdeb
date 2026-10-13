@@ -2,7 +2,7 @@
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { LogIn } from "lucide-react";
@@ -18,6 +18,12 @@ export default function LoginPage() {
   const { refresh } = useAuth();
   const { push } = useToast();
   const [serverError, setServerError] = useState("");
+  const [expiredNote, setExpiredNote] = useState(false);
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("reason") === "session") {
+      setExpiredNote(true);
+    }
+  }, []);
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<z.infer<typeof schema>>({ resolver: zodResolver(schema) });
 
   async function onSubmit(values: z.infer<typeof schema>) {
@@ -51,6 +57,7 @@ export default function LoginPage() {
         <div className="w-full max-w-sm">
           <h1 className="text-2xl font-bold tracking-tight text-ink">Welcome back</h1>
           <p className="mt-1 text-sm text-ink-soft">Sign in to your firm workspace.</p>
+          {expiredNote ? <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 ring-1 ring-inset ring-amber-200">Your session expired — please sign in again. Your data is safe.</p> : null}
           <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-4 rounded-card border border-slate-200/80 bg-white p-6 shadow-card">
             <Field label="Email" error={errors.email?.message}>
               <TextInput type="email" placeholder="you@firm.in" autoComplete="email" {...register("email")} />
