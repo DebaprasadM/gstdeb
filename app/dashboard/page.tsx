@@ -6,6 +6,7 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 import { useAuth } from "@/lib/auth";
 import { apiFetch, inr } from "@/lib/api";
 import { Card, CardHeader, EmptyState, ErrorState, Skeleton, Stat, StatusBadge, Button, statusTone } from "@/components/ui/primitives";
+import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
 
 interface Dash {
   activeClients: number; docsPending: number; salesCount: number; purchaseCount: number;
@@ -44,10 +45,10 @@ export default function DashboardHome() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (org) void load(); }, [org?.id]);
 
-  if (loading) return <Skeleton lines={4} />;
+  if (loading) return <DashboardSkeleton />;
   if (!org) return <EmptyState title="No organization" hint="Your account has no firm attached. Contact support." />;
   if (err) return <ErrorState message={err} retry={load} />;
-  if (!data) return <Skeleton lines={4} />;
+  if (!data) return <DashboardSkeleton />;
 
   const isNew = data.activeClients === 0 && data.salesCount === 0;
   const ov = data.businessOverview;
@@ -68,10 +69,10 @@ export default function DashboardHome() {
   const today = new Intl.DateTimeFormat("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" }).format(new Date());
 
   const tiles = [
-    { label: "Deadlines due", sub: "next 14 days", value: data.upcomingDeadlines.length, bg: "bg-violet-50", text: "text-violet-900", border: "border-violet-200", icon: "📅", href: "/dashboard/tasks" },
-    { label: "Docs to review", sub: "received + corrections", value: data.docsPending, bg: "bg-emerald-50", text: "text-emerald-900", border: "border-emerald-200", icon: "📎", href: "/dashboard/documents" },
-    { label: "Overdue tasks", sub: "needs action now", value: data.overdueTasks, bg: "bg-red-50", text: "text-red-900", border: "border-red-200", icon: "⚠️", href: "/dashboard/tasks" },
-    { label: "Active clients", sub: "shopkeepers", value: data.activeClients, bg: "bg-sky-50", text: "text-sky-900", border: "border-sky-200", icon: "👥", href: "/dashboard/clients" }
+    { label: "Deadlines due", sub: "next 14 days", value: data.upcomingDeadlines.length, bg: "bg-violet-50", text: "text-violet-950", border: "border-violet-200", icon: "📅", href: "/dashboard/tasks" },
+    { label: "Docs to review", sub: "received + corrections", value: data.docsPending, bg: "bg-emerald-50", text: "text-emerald-950", border: "border-emerald-200", icon: "📎", href: "/dashboard/documents" },
+    { label: "Overdue tasks", sub: "needs action now", value: data.overdueTasks, bg: "bg-red-50", text: "text-red-950", border: "border-red-200", icon: "⚠️", href: "/dashboard/tasks" },
+    { label: "Active clients", sub: "shopkeepers", value: data.activeClients, bg: "bg-sky-50", text: "text-sky-950", border: "border-sky-200", icon: "👥", href: "/dashboard/clients" }
   ];
 
   return (
@@ -94,19 +95,19 @@ export default function DashboardHome() {
           <p className="mt-5 text-[15px] text-white/85">{greetIcon} {greet},</p>
           <h1 className="text-[27px] font-bold leading-tight tracking-tight" style={{ textShadow: "0 2px 16px rgba(0,0,0,0.35)" }}>{me.name}</h1>
           <p className="mt-1 text-[13px] font-semibold uppercase tracking-[0.14em] text-violet-200">🏢 {org.name}</p>
-          <div className="mt-3.5 flex flex-wrap gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/50 bg-white/10 px-3.5 py-1.5 text-[13px] font-semibold text-white"><span className="h-2 w-2 rounded-full bg-emerald-300" /> Accountant</span>
-            <Link href="/dashboard/fees" className="inline-flex items-center gap-1.5 rounded-full border border-emerald-600/40 bg-emerald-300 px-3.5 py-1.5 text-[13px] font-bold text-emerald-950 transition-transform active:scale-95">💰 To collect: {inr(data.outstandingFees)}</Link>
+          <div className="mt-3.5 flex flex-nowrap items-center gap-1.5">
+            <span className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-white/50 bg-white/10 px-3 py-1.5 text-[12px] font-semibold text-white"><span className="h-2 w-2 rounded-full bg-emerald-300" /> Accountant</span>
+            <Link href="/dashboard/fees" className="inline-flex min-w-0 items-center gap-1 whitespace-nowrap rounded-full border border-emerald-600/40 bg-emerald-300 px-3 py-1.5 text-[12px] font-bold text-emerald-950 transition-transform active:scale-95"><span className="truncate">💰 To collect: {inr(data.outstandingFees)}</span></Link>
           </div>
         </div>
         <div className="-mt-7 rounded-t-[1.75rem] bg-background px-1 pt-5">
           <p className="flex items-center gap-1.5 text-[13px] font-medium text-ink-faint"><span className="h-1.5 w-1.5 rounded-full bg-ink-faint" /> Needs your attention</p>
           <div className="mt-2.5 grid grid-cols-2 gap-2.5">
             {tiles.map((t) => (
-              <Link key={t.label} href={t.href} className={`${t.bg} rounded-2xl border ${t.border} p-2.5`}>
-                <p className={`text-[12px] font-semibold ${t.text}`}>{t.icon} {t.label}</p>
-                <p className={`tnum mt-0.5 text-[22px] font-bold ${t.text}`}>{t.value}</p>
-                <p className={`text-[11px] ${t.text} opacity-70`}>{t.sub}</p>
+              <Link key={t.label} href={t.href} className={`${t.bg} rounded-2xl border ${t.border} p-2`}>
+                <p className={`text-[11px] font-semibold ${t.text}`}>{t.icon} {t.label}</p>
+                <p className={`tnum mt-0.5 text-[19px] font-bold ${t.text}`}>{t.value}</p>
+                <p className={`text-[10px] ${t.text} opacity-70`}>{t.sub}</p>
               </Link>
             ))}
           </div>
