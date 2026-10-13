@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Plus, Upload, Trash2, ReceiptText } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { API_URL, apiFetch, ApiError, inr, currentPeriod, todayISO } from "@/lib/api";
-import { scanInvoice, prewarmOcr, type ScannedInvoice } from "@/lib/ocr";
+import { scanInvoice, prewarmOcr, cancelScan, ScanCancelled, type ScannedInvoice } from "@/lib/ocr";
 import { useToast } from "@/components/ui/toast";
 import { Button, Card, EmptyState, Field, PageHeader, SearchInput, Select, Skeleton, TableShell, TextInput } from "@/components/ui/primitives";
 import { Modal } from "@/components/ui/modal";
@@ -162,6 +162,7 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
       applyScan(s);
       push(s.overall >= 60 ? "success" : "info", `Scanned (${s.overall}%) — verify highlighted fields, then Save.`);
     } catch (e) {
+      if (e instanceof ScanCancelled) return;
       push("error", e instanceof Error ? e.message : "Could not read this photo — enter manually; the photo stays attached below.");
     } finally {
       setScan(null);
@@ -351,7 +352,10 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
           </div>
           {scan ? (
           <div className="mt-2">
-            <p className="text-xs text-ink-soft">{scan.status}</p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs text-ink-soft">{scan.status}</p>
+              <button onClick={() => { cancelScan(); setScan(null); }} className="shrink-0 text-xs font-semibold text-red-600 underline underline-offset-2">Cancel</button>
+            </div>
             <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${scan.pct}%` }} /></div>
           </div>
           ) : null}

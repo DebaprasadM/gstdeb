@@ -147,7 +147,11 @@ export function parseInvoiceText(text: string): ScannedInvoice {
 
 export type OcrProgress = (pct: number, status: string) => void;
 
-const MAX_DIM = 1600;
+export class ScanCancelled extends Error {
+  constructor() { super("Scan cancelled"); this.name = "ScanCancelled"; }
+}
+
+const MAX_DIM = 1200;
 
 /** Downscale + grayscale large camera photos (3-5x faster OCR, same bill accuracy). */
 export async function preprocessImage(file: Blob): Promise<Blob> {
@@ -162,7 +166,7 @@ export async function preprocessImage(file: Blob): Promise<Blob> {
       if (!x0) return file;
       x0.filter = "grayscale(1) contrast(1.08)";
       x0.drawImage(bmp, 0, 0);
-      const out: Blob | null = await new Promise((res) => c0.toBlob(res, "image/jpeg", 0.92));
+      const out: Blob | null = await new Promise((res) => c0.toBlob(res, "image/jpeg", 0.85));
       bmp.close();
       return out ?? file;
     }
@@ -174,7 +178,7 @@ export async function preprocessImage(file: Blob): Promise<Blob> {
     ctx.filter = "grayscale(1) contrast(1.08)";
     ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
     bmp.close();
-    const out: Blob | null = await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.92));
+    const out: Blob | null = await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.85));
     return out ?? file;
   } catch {
     return file;
@@ -187,6 +191,15 @@ type WorkerLike = {
 };
 
 let workerPromise: Promise<WorkerLike> | null = null;
+let scanToken = 0;
+
+/** Cancel in-flight scan (abandons result; worker is recycled on next scan). */
+export function cancelScan(): void {
+  scanToken++;
+  const w = workerPromise;
+  workerPromise = null;
+  if (w) void w.then((wk) => wk.terminate().catch(() => {}));
+}
 
 async function getWorker(onProgress: OcrProgress): Promise<WorkerLike> {
   if (!workerPromise) {
@@ -220,15 +233,20 @@ const SCAN_TIMEOUT_MS = 60000;
 
 /** Lazy-loads tesseract.js (keeps initial bundle small) and recognizes English text. */
 export async function recognizeImage(file: Blob, onProgress: OcrProgress): Promise<{ text: string; confidence: number }> {
+  const myToken = scanToken;
   const started = Date.now();
+  const elapsed = () => `${Math.round((Date.now() - started) / 1000)}s`;
   const worker = await getWorker(onProgress);
+  if (myToken !== scanToken) throw new ScanCancelled();
+  onProgress(12, "Shrinking photo for speed…");
   const small = await preprocessImage(file);
-  onProgress(12, "Reading photo…");
+  if (myToken !== scanToken) throw new ScanCancelled();
+  onProgress(16, "Reading photo…");
   const job = worker.recognize(small, {}, {
     logger: (m: { status?: string; progress?: number }) => {
+      if (myToken !== scanToken) return;
       if (typeof m.progress === "number") {
-        const elapsed = Math.round((Date.now() - started) / 1000);
-        onProgress(Math.min(96, Math.round(12 + m.progress * 84)), `Reading lines… (${elapsed}s)`);
+        onProgress(Math.min(96, Math.round(16 + m.progress * 80)), `Reading photo… (${elapsed()})`);
       }
     }
   } as never);
@@ -241,6 +259,7 @@ export async function recognizeImage(file: Blob, onProgress: OcrProgress): Promi
   );
   try {
     const { data } = await Promise.race([job, timeout]);
+    if (myToken !== scanToken) throw new ScanCancelled();
     onProgress(100, "Done");
     const words = data.words ?? [];
     const confs = words.map((w) => w.confidence ?? 0).filter((c) => c > 0);
