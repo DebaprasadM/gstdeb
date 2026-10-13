@@ -7,10 +7,10 @@ import { useToast } from "@/components/ui/toast";
 import { Button, EmptyState, Field, PageHeader, SearchInput, Select, Skeleton, TableShell, TextInput } from "@/components/ui/primitives";
 import { Modal } from "@/components/ui/modal";
 
-const RATES = [0, 5, 12, 18, 28];
+const RATES = ["0", "0.1", "0.25", "1", "1.5", "3", "5", "7.5", "12", "18", "28"];
 
-interface Line { description: string; hsn: string; quantity: string; rate: string; }
-const blankLine = (): Line => ({ description: "", hsn: "", quantity: "", rate: "" });
+interface Line { description: string; hsn: string; quantity: string; rate: string; gstRate: string; }
+const blankLine = (): Line => ({ description: "", hsn: "", quantity: "", rate: "", gstRate: "18" });
 const lineAmount = (l: Line) => (Number(l.quantity) || 0) * (Number(l.rate) || 0);
 
 function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
@@ -20,7 +20,7 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
   const [rows, setRows] = useState<any[]>([]);
   const [clients, setClients] = useState<Array<{ id: string; businessName: string }>>([]);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ clientId: "", invoiceNumber: "", invoiceDate: todayISO(), gstRate: "18", period: currentPeriod(), party: "", partyGstin: "" });
+  const [form, setForm] = useState({ clientId: "", invoiceNumber: "", invoiceDate: todayISO(), period: currentPeriod(), party: "", partyGstin: "", placeOfSupply: "", invoiceType: "B2B", discount: "", reverseCharge: false });
   // "" = not chosen yet: user picks a client first, then rows load.
   // Deep-link (?client=<id>) preselects, e.g. from the client detail page.
   const [clientFilter, setClientFilter] = useState(() =>
@@ -107,8 +107,10 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
     try {
       const body: Record<string, unknown> = {
         clientId: form.clientId, invoiceNumber: form.invoiceNumber.trim(), invoiceDate: form.invoiceDate,
-        taxableValue: Math.round(itemsTotal * 100) / 100, gstRate: Number(form.gstRate), period: form.period,
-        items: filled.map((l) => ({ description: l.description.trim(), hsn: l.hsn.trim() || null, quantity: Number(l.quantity), rate: Number(l.rate) }))
+        taxableValue: Math.round(itemsTotal * 100) / 100, period: form.period,
+        invoiceType: form.invoiceType, discount: Number(form.discount || 0), reverseCharge: form.reverseCharge,
+        placeOfSupply: form.placeOfSupply.trim() || null,
+        items: filled.map((l) => ({ description: l.description.trim(), hsn: l.hsn.trim() || null, quantity: Number(l.quantity), rate: Number(l.rate), gstRate: Number(l.gstRate) }))
       };
       if (kind === "sales") {
         body.customerName = form.party.trim() || null;
@@ -170,14 +172,20 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
           <Field label="Date"><TextInput type="date" value={form.invoiceDate} onChange={(e) => setForm({ ...form, invoiceDate: e.target.value })} /></Field>
           <Field label={`${partyLabel} name`}><TextInput value={form.party} onChange={(e) => setForm({ ...form, party: e.target.value })} placeholder={kind === "sales" ? "Anup General Store" : "Metro Wholesale"} /></Field>
           <Field label={`${partyLabel} GSTIN (optional)`}><TextInput value={form.partyGstin} onChange={(e) => setForm({ ...form, partyGstin: e.target.value.toUpperCase() })} placeholder="19…" /></Field>
+          <Field label="Invoice type"><Select value={form.invoiceType} onChange={(e) => setForm({ ...form, invoiceType: e.target.value })}><option>B2B</option><option>B2C</option><option>SEZ</option><option>EXPORT</option><option>DEEMED</option><option>RCM</option></Select></Field>
+          <Field label="Place of supply (state code)"><TextInput value={form.placeOfSupply} onChange={(e) => setForm({ ...form, placeOfSupply: e.target.value })} placeholder="19 = WB, blank = same state" /></Field>
+          <Field label="Discount ₹"><TextInput inputMode="decimal" value={form.discount} onChange={(e) => setForm({ ...form, discount: e.target.value })} placeholder="0" /></Field>
+          <label className="flex items-center gap-2 text-sm text-ink-soft"><input type="checkbox" checked={form.reverseCharge} onChange={(e) => setForm({ ...form, reverseCharge: e.target.checked })} className="h-4 w-4 accent-primary" /> Reverse charge (RCM)</label>
         </div>
         <div className="mt-4 space-y-2">
+          <p className="text-[13px] font-medium text-ink-soft">Items — each line can carry its own GST rate</p>
           {lines.map((l, i) => (
-            <div key={i} className="grid gap-2 rounded-lg bg-background p-2.5 sm:grid-cols-[1.6fr_0.7fr_0.6fr_0.7fr_0.7fr_auto]">
+            <div key={i} className="grid gap-2 rounded-lg bg-background p-2.5 sm:grid-cols-[1.5fr_0.6fr_0.5fr_0.6fr_0.6fr_0.7fr_auto]">
               <TextInput value={l.description} onChange={(e) => setLine(i, { description: e.target.value })} placeholder={`Item ${i + 1} — e.g. Basmati Rice 25kg`} />
               <TextInput value={l.hsn} onChange={(e) => setLine(i, { hsn: e.target.value })} placeholder="HSN" />
               <TextInput inputMode="decimal" value={l.quantity} onChange={(e) => setLine(i, { quantity: e.target.value })} placeholder="Qty" />
               <TextInput inputMode="decimal" value={l.rate} onChange={(e) => setLine(i, { rate: e.target.value })} placeholder="Rate ₹" />
+              <Select value={l.gstRate} onChange={(e) => setLine(i, { gstRate: e.target.value })} aria-label="GST %">{RATES.map((r) => <option key={r} value={r}>{r}%</option>)}</Select>
               <div className="tnum flex items-center px-1 text-sm font-medium text-ink">{inr(lineAmount(l))}</div>
               <button onClick={() => setLines((xs) => xs.length > 1 ? xs.filter((_, j) => j !== i) : [blankLine()])} className="rounded-lg p-2 text-ink-faint hover:bg-red-50 hover:text-red-600" title="Remove line"><Trash2 size={15} /></button>
             </div>
@@ -185,7 +193,6 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
           <button onClick={() => setLines((xs) => [...xs, blankLine()])} className="text-[13px] font-medium text-primary hover:underline">+ Add another item</button>
         </div>
         <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-4">
-          <Field label="GST %"><Select value={form.gstRate} onChange={(e) => setForm({ ...form, gstRate: e.target.value })}>{RATES.map((r) => <option key={r} value={r}>{r}</option>)}</Select></Field>
           <Field label="Period"><TextInput value={form.period} onChange={(e) => setForm({ ...form, period: e.target.value })} /></Field>
           <p className="tnum text-sm text-ink-soft">Items total: <strong className="text-ink">{inr(itemsTotal)}</strong></p>
           <div className="flex gap-2">
@@ -220,13 +227,25 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
         </>}
       {viewing ? (
         <Modal title={`${viewing.invoiceNumber} — ${(kind === "sales" ? viewing.customerName : viewing.supplierName) ?? ""}`} onClose={() => setViewing(null)} wide>
+          <div className="mb-3 flex flex-wrap gap-2 text-xs">
+            {viewing.gstrCategory ? <span className="rounded-full bg-primary-50 px-2.5 py-1 font-semibold text-primary">GSTR: {viewing.gstrCategory}</span> : null}
+            {viewing.supplyType ? <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-ink-soft">{viewing.supplyType === "INTER" ? "IGST (inter-state)" : "CGST+SGST (intra-state)"}</span> : null}
+            {viewing.reverseCharge ? <span className="rounded-full bg-amber-50 px-2.5 py-1 font-semibold text-amber-800">RCM</span> : null}
+          </div>
           <div className="space-y-2">
-            {(viewing.items ?? []).map((it: { id: string; description: string; hsn: string | null; quantity: string; rate: string; amount: string }) => (
+            {(viewing.items ?? []).map((it: { id: string; description: string; hsn: string | null; quantity: string; rate: string; amount: string; gstRate?: string | number }) => (
               <div key={it.id} className="flex items-center justify-between gap-3 rounded-lg bg-background px-3 py-2.5 text-sm">
-                <div><p className="font-medium text-ink">{it.description}</p><p className="text-xs text-ink-faint">{it.hsn ? `HSN ${it.hsn} · ` : ""}{it.quantity} × {inr(Number(it.rate))}</p></div>
+                <div><p className="font-medium text-ink">{it.description}</p><p className="text-xs text-ink-faint">{it.hsn ? `HSN ${it.hsn} · ` : ""}{it.quantity} × {inr(Number(it.rate))}{it.gstRate !== undefined ? ` · GST ${it.gstRate}%` : ""}</p></div>
                 <p className="tnum font-semibold text-ink">{inr(Number(it.amount))}</p>
               </div>
             ))}
+          </div>
+          <div className="tnum mt-3 space-y-1 border-t border-slate-100 pt-3 text-sm">
+            <div className="flex justify-between text-ink-soft"><span>Taxable</span><span>{inr(Number(viewing.taxableValue))}</span></div>
+            {Number(viewing.discount) > 0 ? <div className="flex justify-between text-ink-soft"><span>Discount</span><span>− {inr(Number(viewing.discount))}</span></div> : null}
+            <div className="flex justify-between text-ink-soft"><span>CGST + SGST + IGST</span><span>{inr(Number(viewing.cgst) + Number(viewing.sgst) + Number(viewing.igst))}</span></div>
+            {Number(viewing.roundOff) !== 0 ? <div className="flex justify-between text-ink-soft"><span>Round-off</span><span>{inr(Number(viewing.roundOff))}</span></div> : null}
+            <div className="flex justify-between text-base font-bold text-ink"><span>Total</span><span>{inr(Number(viewing.totalValue))}</span></div>
           </div>
         </Modal>
       ) : null}
