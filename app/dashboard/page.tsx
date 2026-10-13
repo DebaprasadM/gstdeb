@@ -13,6 +13,11 @@ interface Dash {
   upcomingDeadlines: Array<{ id: string; returnType: string; period: string; dueDate: string; client: { businessName: string } }>;
   recentDocuments: Array<{ id: string; fileName: string; period: string; status: string; client: { businessName: string } }>;
   recentSales: Array<{ id: string; invoiceNumber: string; totalValue: string; client: { businessName: string } }>;
+  businessOverview: Array<{
+    id: string; businessName: string; gstin: string | null;
+    salesTotal: number; salesCount: number; purchaseTotal: number; purchaseCount: number;
+    documents: number; openTasks: number; billed: number; paid: number; outstanding: number;
+  }>;
 }
 
 interface Month { period: string; salesTotal: number; purchaseTotal: number; documents: number; }
@@ -22,6 +27,7 @@ export default function DashboardHome() {
   const [data, setData] = useState<Dash | null>(null);
   const [months, setMonths] = useState<Month[]>([]);
   const [err, setErr] = useState("");
+  const [ovTab, setOvTab] = useState<"revenue" | "dues" | "activity">("revenue");
   const org = me?.organizations[0];
 
   async function load() {
@@ -44,54 +50,88 @@ export default function DashboardHome() {
   if (!data) return <Skeleton lines={4} />;
 
   const isNew = data.activeClients === 0 && data.salesCount === 0;
+  const ov = data.businessOverview;
+  const ovSum = {
+    sales: ov.reduce((a, c) => a + c.salesTotal, 0),
+    salesCount: ov.reduce((a, c) => a + c.salesCount, 0),
+    purchases: ov.reduce((a, c) => a + c.purchaseTotal, 0),
+    billed: ov.reduce((a, c) => a + c.billed, 0),
+    paid: ov.reduce((a, c) => a + c.paid, 0),
+    outstanding: ov.reduce((a, c) => a + c.outstanding, 0),
+    docs: ov.reduce((a, c) => a + c.documents, 0),
+    tasks: ov.reduce((a, c) => a + c.openTasks, 0)
+  };
+  const ovTabs: Array<[typeof ovTab, string]> = [["revenue", "💰 Revenue"], ["dues", "🧾 Payments Due"], ["activity", "📌 Activity"]];
   const hour = new Date().getHours();
   const greet = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const greetIcon = hour < 12 ? "☀️" : hour < 17 ? "🌤️" : "🌙";
   const today = new Intl.DateTimeFormat("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" }).format(new Date());
 
   const tiles = [
-    { label: "Deadlines due", sub: "next 14 days", value: data.upcomingDeadlines.length, bg: "bg-violet-50", text: "text-violet-700", icon: "📅", href: "/dashboard/tasks" },
-    { label: "Docs to review", sub: "received + corrections", value: data.docsPending, bg: "bg-emerald-50", text: "text-emerald-700", icon: "📎", href: "/dashboard/documents" },
-    { label: "Overdue tasks", sub: "needs action now", value: data.overdueTasks, bg: "bg-red-50", text: "text-red-700", icon: "⚠️", href: "/dashboard/tasks" },
-    { label: "Active clients", sub: "shopkeepers", value: data.activeClients, bg: "bg-sky-50", text: "text-sky-700", icon: "👥", href: "/dashboard/clients" }
+    { label: "Deadlines due", sub: "next 14 days", value: data.upcomingDeadlines.length, bg: "bg-violet-50", text: "text-violet-700", border: "border-violet-200", icon: "📅", href: "/dashboard/tasks" },
+    { label: "Docs to review", sub: "received + corrections", value: data.docsPending, bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200", icon: "📎", href: "/dashboard/documents" },
+    { label: "Overdue tasks", sub: "needs action now", value: data.overdueTasks, bg: "bg-red-50", text: "text-red-700", border: "border-red-200", icon: "⚠️", href: "/dashboard/tasks" },
+    { label: "Active clients", sub: "shopkeepers", value: data.activeClients, bg: "bg-sky-50", text: "text-sky-700", border: "border-sky-200", icon: "👥", href: "/dashboard/clients" }
   ];
 
   return (
     <>
     {/* ---------- Mobile app-style dashboard ---------- */}
     <div className="lg:hidden">
-      <div className="-mx-4 -mt-6 sm:-mx-6">
+      <div className="-mx-4 -mt-6 px-4 pt-4 sm:-mx-6 sm:px-5">
         <div
-          className="dot-grid rounded-b-[2rem] px-5 pb-12 pt-5 text-white"
-          style={{ background: "linear-gradient(135deg, #0B2E4F 0%, #0F4C81 55%, #1F7A4D 130%)" }}
+          className="rounded-[1.75rem] px-5 pb-10 pt-5 text-white shadow-pop"
+          style={{
+            backgroundImage:
+              "radial-gradient(rgba(255,255,255,0.28) 1.6px, transparent 1.6px), radial-gradient(120% 90% at 85% -10%, rgba(196,181,253,0.5) 0%, transparent 55%), radial-gradient(110% 85% at -10% 110%, rgba(34,211,238,0.35) 0%, transparent 60%), linear-gradient(140deg, #2E1065 0%, #4F46E5 55%, #6D28D9 130%)",
+            backgroundSize: "20px 20px, cover, cover, cover"
+          }}
         >
           <div className="flex items-center justify-between">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-medium ring-1 ring-inset ring-white/25">📅 {today}</span>
-            <Link href="/dashboard/tasks" className="flex h-10 w-10 items-center justify-center rounded-full bg-white/15 ring-1 ring-inset ring-white/25">🔔</Link>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/50 bg-white/10 px-3 py-1 text-xs font-medium text-white">📅 {today}</span>
+            <Link href="/dashboard/tasks" className="flex h-10 w-10 items-center justify-center rounded-full border border-white/50 bg-white/10 transition-transform active:scale-95">🔔</Link>
           </div>
           <p className="mt-5 text-[15px] text-white/85">{greetIcon} {greet},</p>
-          <h1 className="text-[26px] font-bold leading-tight">{me.name}</h1>
-          <p className="mt-0.5 text-sm font-medium uppercase tracking-wide text-white/80">🏢 {org.name}</p>
+          <h1 className="text-[27px] font-bold leading-tight tracking-tight" style={{ textShadow: "0 2px 16px rgba(0,0,0,0.35)" }}>{me.name}</h1>
+          <p className="mt-1 text-[13px] font-semibold uppercase tracking-[0.14em] text-violet-200">🏢 {org.name}</p>
           <div className="mt-3.5 flex flex-wrap gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[13px] font-semibold ring-1 ring-inset ring-white/30"><span className="h-2 w-2 rounded-full bg-emerald-300" /> Accountant</span>
-            <Link href="/dashboard/fees" className="inline-flex items-center gap-1.5 rounded-full bg-emerald-300 px-3.5 py-1.5 text-[13px] font-bold text-emerald-950">💰 To collect: {inr(data.outstandingFees)}</Link>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/50 bg-white/10 px-3.5 py-1.5 text-[13px] font-semibold text-white"><span className="h-2 w-2 rounded-full bg-emerald-300" /> Accountant</span>
+            <Link href="/dashboard/fees" className="inline-flex items-center gap-1.5 rounded-full border border-emerald-600/40 bg-emerald-300 px-3.5 py-1.5 text-[13px] font-bold text-emerald-950 transition-transform active:scale-95">💰 To collect: {inr(data.outstandingFees)}</Link>
           </div>
         </div>
-        <div className="-mt-7 rounded-t-[1.75rem] bg-background px-4 pb-24 pt-5">
+        <div className="-mt-7 rounded-t-[1.75rem] bg-background px-1 pt-5">
           <p className="flex items-center gap-1.5 text-[13px] font-medium text-ink-faint"><span className="h-1.5 w-1.5 rounded-full bg-ink-faint" /> Needs your attention</p>
           <div className="mt-2.5 grid grid-cols-2 gap-2.5">
             {tiles.map((t) => (
-              <Link key={t.label} href={t.href} className={`${t.bg} rounded-2xl p-3.5`}>
+              <Link key={t.label} href={t.href} className={`${t.bg} rounded-2xl border ${t.border} p-3.5`}>
                 <p className={`text-[13px] font-semibold ${t.text}`}>{t.icon} {t.label}</p>
                 <p className={`tnum mt-0.5 text-[26px] font-bold ${t.text}`}>{t.value}</p>
                 <p className={`text-[11px] ${t.text} opacity-70`}>{t.sub}</p>
               </Link>
             ))}
           </div>
-          <Link href="/dashboard/fees" className="mt-2.5 flex items-center justify-between rounded-2xl bg-rose-50 px-4 py-3.5 ring-1 ring-inset ring-rose-100">
+          <Link href="/dashboard/fees" className="mt-2.5 flex items-center justify-between rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3.5">
             <span className="text-sm font-semibold text-rose-700">💰 Fees to collect</span>
             <span className="tnum text-xl font-bold text-rose-700">{inr(data.outstandingFees)}</span>
           </Link>
+          {data.businessOverview.length > 0 && (
+          <div className="mt-3 rounded-3xl border border-slate-200/80 bg-white p-4 shadow-card">
+            <div className="flex items-center justify-between">
+              <p className="text-[15px] font-bold text-ink">🏪 Business overview</p>
+              <Link href="/dashboard/clients" className="text-[13px] font-medium text-primary hover:underline">All clients</Link>
+            </div>
+            <div className="mt-2.5 flex gap-1.5">
+              {ovTabs.map(([v, l]) => (
+                <button key={v} onClick={() => setOvTab(v)} className={`flex-1 rounded-full px-2 py-1.5 text-[12px] font-medium transition-colors ${ovTab === v ? "bg-primary text-white" : "bg-background text-ink-soft"}`}>{l}</button>
+              ))}
+            </div>
+            <div className="mt-3 rounded-2xl bg-background p-4 text-center">
+              {ovTab === "revenue" && (<><p className="tnum text-[26px] font-bold text-ink">{inr(ovSum.sales)}</p><p className="mt-0.5 text-xs text-ink-soft">{ovSum.salesCount} sales entries · purchases {inr(ovSum.purchases)}</p></>)}
+              {ovTab === "dues" && (<><p className="tnum text-[26px] font-bold text-amber-700">{inr(ovSum.outstanding)}</p><p className="mt-0.5 text-xs text-ink-soft">due of {inr(ovSum.billed)} billed · {inr(ovSum.paid)} received</p></>)}
+              {ovTab === "activity" && (<><p className="tnum text-[26px] font-bold text-ink">{ovSum.docs + ovSum.tasks} open</p><p className="mt-0.5 text-xs text-ink-soft">{ovSum.docs} documents · {ovSum.tasks} tasks pending</p></>)}
+            </div>
+          </div>
+          )}
           {isNew ? (
             <div className="mt-3 rounded-3xl border border-slate-200/80 bg-white p-4 shadow-card">
               <p className="text-[15px] font-bold text-ink">🧭 New here? 3 quick steps</p>
@@ -99,7 +139,7 @@ export default function DashboardHome() {
               <div className="mt-3 space-y-2.5">
                 <div className="rounded-2xl bg-background p-3">
                   <p className="text-sm font-semibold text-ink"><span className="mr-1.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-ink text-xs font-bold text-white">1</span> Add your first client</p>
-                  <Link href="/dashboard/clients" style={{ background: "linear-gradient(90deg, #0F4C81 0%, #2E8B57 130%)" }} className="mt-2 flex items-center justify-center gap-1.5 rounded-2xl py-3 text-[15px] font-bold text-white">＋ Add client</Link>
+                  <Link href="/dashboard/clients" style={{ background: "linear-gradient(90deg, #7C3AED 0%, #4F46E5 100%)" }} className="mt-2 flex items-center justify-center gap-1.5 rounded-2xl py-3 text-[15px] font-bold text-white shadow-pop">＋ Add client</Link>
                 </div>
                 <div className="rounded-2xl bg-background p-3"><p className="text-sm font-semibold text-ink"><span className="mr-1.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-ink text-xs font-bold text-white">2</span> Upload their bills</p></div>
                 <div className="rounded-2xl bg-background p-3"><p className="text-sm font-semibold text-ink"><span className="mr-1.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-ink text-xs font-bold text-white">3</span> Track filing deadlines</p></div>
@@ -117,7 +157,7 @@ export default function DashboardHome() {
                     </div>
                   ))}
               </div>
-              <Link href="/dashboard/tasks" style={{ background: "linear-gradient(90deg, #0F4C81 0%, #2E8B57 130%)" }} className="mt-3 flex items-center justify-center gap-1.5 rounded-2xl py-3 text-[15px] font-bold text-white">View all deadlines →</Link>
+              <Link href="/dashboard/tasks" style={{ background: "linear-gradient(90deg, #7C3AED 0%, #4F46E5 100%)" }} className="mt-3 flex items-center justify-center gap-1.5 rounded-2xl py-3 text-[15px] font-bold text-white shadow-pop">View all deadlines →</Link>
             </div>
           )}
         </div>
@@ -205,7 +245,40 @@ export default function DashboardHome() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+      {!isNew && (
+      <div className="hidden lg:block">
+        <Card>
+          <CardHeader
+            title="Business overview"
+            sub="Practice totals — client details live on the Clients page"
+            action={<Link href="/dashboard/clients" className="text-[13px] font-medium text-primary hover:underline">All clients</Link>}
+          />
+          <div className="mb-4 flex flex-wrap gap-2">
+            {ovTabs.map(([v, l]) => (
+              <button key={v} onClick={() => setOvTab(v)} className={`rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-colors ${ovTab === v ? "bg-primary text-white" : "bg-white text-ink-soft ring-1 ring-inset ring-slate-200 hover:ring-primary"}`}>{l}</button>
+            ))}
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {ovTab === "revenue" && (<>
+              <Stat label="Total sales turnover" value={inr(ovSum.sales)} sub={`${ovSum.salesCount} entries`} />
+              <Stat label="Total purchase inflow" value={inr(ovSum.purchases)} />
+              <Stat label="Margin signal" value={inr(ovSum.sales - ovSum.purchases)} sub="Sales minus purchases" />
+            </>)}
+            {ovTab === "dues" && (<>
+              <Stat label="Outstanding" value={inr(ovSum.outstanding)} accent />
+              <Stat label="Billed" value={inr(ovSum.billed)} />
+              <Stat label="Received" value={inr(ovSum.paid)} />
+            </>)}
+            {ovTab === "activity" && (<>
+              <Stat label="Documents" value={String(ovSum.docs)} />
+              <Stat label="Open tasks" value={String(ovSum.tasks)} />
+              <Stat label="Active clients" value={String(data.activeClients)} />
+            </>)}
+          </div>
+        </Card>
+      </div>
+      )}
     </>
   );
 }

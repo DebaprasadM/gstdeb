@@ -80,7 +80,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/95 backdrop-blur lg:hidden">
         <div className="flex items-center justify-between px-4 py-2.5">
           <div className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-primary text-sm font-bold text-white">হি</span>
+            <span className="flex h-8 w-8 items-center justify-center rounded-[10px] text-sm font-bold text-white" style={{ background: "linear-gradient(135deg, #7C3AED 0%, #4F46E5 100%)" }}>হি</span>
             <p className="text-[15px] font-bold tracking-tight text-ink">HisabKitab</p>
           </div>
           <Avatar name={me.name} />
@@ -124,14 +124,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 href={t.href}
                 className={cn(
                   "flex flex-col items-center gap-0.5 rounded-2xl py-1.5 text-[11px] transition-all active:scale-95",
-                  active ? "font-semibold text-primary" : "font-medium text-slate-400"
+                  active ? "font-semibold text-violet-700" : "font-medium text-slate-400"
                 )}
               >
-                <span className={cn("flex h-8 w-12 items-center justify-center rounded-full transition-colors", active && "bg-primary-50")}>
+                <span className={cn("flex h-8 w-12 items-center justify-center rounded-full transition-colors", active && "bg-violet-100")}>
                   <Icon size={21} strokeWidth={active ? 2.4 : 2} />
                 </span>
                 {t.label}
-                <span className={cn("h-1 w-1 rounded-full", active ? "bg-accent" : "bg-transparent")} />
+                <span className={cn("h-1 w-1 rounded-full", active ? "bg-violet-600" : "bg-transparent")} />
               </Link>
             );
           })}
@@ -139,15 +139,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             onClick={() => setOpen(!open)}
             className={cn(
               "flex flex-col items-center gap-0.5 rounded-2xl py-1.5 text-[11px] transition-all active:scale-95",
-              open ? "font-semibold text-primary" : "font-medium text-slate-400"
+              open ? "font-semibold text-violet-700" : "font-medium text-slate-400"
             )}
             aria-label="More"
           >
-            <span className={cn("flex h-8 w-12 items-center justify-center rounded-full transition-colors", open && "bg-primary-50")}>
+            <span className={cn("flex h-8 w-12 items-center justify-center rounded-full transition-colors", open && "bg-violet-100")}>
               {open ? <X size={21} /> : <Ellipsis size={21} />}
             </span>
             More
-            <span className={cn("h-1 w-1 rounded-full", open ? "bg-accent" : "bg-transparent")} />
+            <span className={cn("h-1 w-1 rounded-full", open ? "bg-violet-600" : "bg-transparent")} />
           </button>
         </div>
       </nav>
