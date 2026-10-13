@@ -1,9 +1,17 @@
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
-function getCsrf(): string | undefined {
+function getCsrfCookie(): string | undefined {
   if (typeof document === "undefined") return undefined;
   const m = document.cookie.match(/(?:^|; )csrf=([^;]*)/);
   return m ? decodeURIComponent(m[1] as string) : undefined;
+}
+
+// In-memory token (seeded from the live session). Survives browsers that
+// drop the readable csrf cookie while keeping the HttpOnly session cookie.
+let memCsrf: string | null = null;
+
+function getCsrf(): string | undefined {
+  return memCsrf ?? getCsrfCookie();
 }
 
 export class ApiError extends Error {
@@ -37,7 +45,8 @@ function isCsrfFailure(e: unknown): boolean {
 
 async function rawFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  const csrf = getCsrf();
+  const sent = init as (RequestInit & { csrfToken?: string }) | undefined;
+  const csrf = sent?.csrfToken ?? getCsrf();
   if (csrf && init?.method && init.method !== "GET") headers["x-csrf-token"] = csrf;
   const res = await fetch(`${API_URL}${path}`, { credentials: "include", ...init, headers: { ...headers, ...(init?.headers as Record<string, string>) } });
   const body = await res.json().catch(() => null);
@@ -45,16 +54,31 @@ async function rawFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
+/** Attach a CSRF token to mutations: memory → cookie → live session. */
+async function withCsrf(init?: RequestInit): Promise<RequestInit | undefined> {
+  if (!init?.method || init.method === "GET" || typeof document === "undefined") return init;
+  if (getCsrf()) return init;
+  try {
+    const r = await rawFetch<{ data: { csrfToken: string } }>("/api/v1/auth/csrf", { method: "POST" });
+    if (r.data.csrfToken) {
+      memCsrf = r.data.csrfToken;
+      return { ...init, csrfToken: memCsrf } as RequestInit;
+    }
+  } catch { /* session dead → let the real call surface 401 → login */ }
+  return init;
+}
+
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   try {
-    return await rawFetch<T>(path, init);
+    return await rawFetch<T>(path, await withCsrf(init));
   } catch (e) {
     // CSRF token lost but session alive (new tab, cleared cookies)? Refresh
     // the token from the live session and retry once — no re-login needed.
     if (init?.method && init.method !== "GET" && isCsrfFailure(e)) {
       try {
-        await rawFetch("/api/v1/auth/csrf", { method: "POST" });
-        return await rawFetch<T>(path, init);
+        const r = await rawFetch<{ data: { csrfToken?: string } }>("/api/v1/auth/csrf", { method: "POST" });
+        if (r.data.csrfToken) memCsrf = r.data.csrfToken;
+        return await rawFetch<T>(path, memCsrf ? ({ ...init, csrfToken: memCsrf } as RequestInit) : init);
       } catch (retryErr) {
         if (isAuthFailure(retryErr)) redirectToLogin("session");
         throw retryErr;
