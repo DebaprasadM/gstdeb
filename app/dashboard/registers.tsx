@@ -345,8 +345,12 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
         <div className="mb-3 rounded-xl border border-dashed border-slate-300 bg-background px-3 py-2.5">
           <div className="flex flex-wrap items-center gap-2">
             <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[13px] font-semibold text-white">
-              📷 Scan bill photo
-              <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => void startScan(e.target.files?.[0])} />
+              📷 Camera
+              <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { void startScan(e.target.files?.[0]); e.target.value = ""; }} />
+            </label>
+            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-primary/40 bg-primary-50 px-3 py-1.5 text-[13px] font-semibold text-primary">
+              🖼️ Gallery
+              <input type="file" accept="image/*" className="hidden" onChange={(e) => { void startScan(e.target.files?.[0]); e.target.value = ""; }} />
             </label>
             {scanFile ? <span className="max-w-[200px] truncate text-xs text-ink-soft">📎 {scanFile.name}</span> : <span className="text-xs text-ink-faint">Printed bills · auto-shrunk for speed · free on-device</span>}
           </div>
