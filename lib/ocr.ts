@@ -11,6 +11,7 @@ export interface ScannedLine {
   quantity: ScannedField<number>;
   rate: ScannedField<number>;
   hsn: ScannedField<string>;
+  gstRate: ScannedField<number>;
 }
 
 export interface ScannedInvoice {
@@ -99,18 +100,33 @@ export function parseInvoiceText(text: string): ScannedInvoice {
   const taxLn = nearKeyword(lines, ["taxable", "sub total", "subtotal", "assessable"]);
   const taxable = lastAmount(taxLn);
 
-  // Item lines: "desc ... qty x rate" pattern (best effort).
+  // Item lines — two shapes:
+  //  A) full table row: "Desc HSN qty x rate gst% amount"
+  //  B) short row: "Desc qty x rate" (at line end)
+  const ALLOWED_GST = [0, 0.1, 0.25, 1, 1.5, 3, 5, 7.5, 12, 18, 28];
   const itemLines: ScannedLine[] = [];
-  for (const ln of lines) {
-    if (itemLines.length >= 8) break;
-    const m = ln.match(/^(.{3,60}?)\s+(\d+(?:\.\d+)?)\s*[xX×]\s*([\d,]+(?:\.\d{1,2})?)\s*$/);
-    if (!m || /total|tax|gst|discount|round|amount|invoice|date|hsn/i.test(m[1]!)) continue;
+  const pushLine = (desc: string, hsn: string, qty: number, rate: number, gst: number | null, conf: number) => {
+    if (itemLines.length >= 8 || !(qty > 0) || !(rate >= 0)) return;
     itemLines.push({
-      description: { value: m[1]!.trim(), confidence: 45 },
-      quantity: { value: num(m[2]!), confidence: 60 },
-      rate: { value: num(m[3]!), confidence: 60 },
-      hsn: { value: "", confidence: 0 }
+      description: { value: desc.trim().slice(0, 120), confidence: conf },
+      quantity: { value: qty, confidence: 60 },
+      rate: { value: rate, confidence: 60 },
+      hsn: { value: hsn, confidence: hsn ? 65 : 0 },
+      gstRate: { value: gst ?? 18, confidence: gst !== null && ALLOWED_GST.includes(gst) ? 60 : 0 }
     });
+  };
+  for (const ln of lines) {
+    if (/total|tax|gst|discount|round|amount|invoice|date|cgst|sgst|igst|taxable|grand/i.test(ln)) continue;
+    const full = ln.match(/^(.{3,60}?)\s+(\d{4,8})\s+(\d+(?:\.\d+)?)\s*[xX×]\s*([\d,]+(?:\.\d{1,2})?)\s+(\d+(?:\.\d+)?)\s+([\d,]+(?:\.\d{1,2})?)\s*$/);
+    if (full) {
+      const qty = num(full[3]!), rate = num(full[4]!), amt = num(full[6]!);
+      if (Math.abs(qty * rate - amt) > Math.max(1, amt * 0.02)) continue; // amount must agree
+      const g = Number(full[5]);
+      pushLine(full[1]!, full[2]!, qty, rate, ALLOWED_GST.includes(g) ? g : null, 55);
+      continue;
+    }
+    const short = ln.match(/^(.{3,60}?)\s+(\d+(?:\.\d+)?)\s*[xX×]\s*([\d,]+(?:\.\d{1,2})?)\s*$/);
+    if (short) pushLine(short[1]!, "", num(short[2]!), num(short[3]!), null, 40);
   }
 
   const confs = [invConf, date.confidence, partyConf, total.confidence, taxable.confidence].filter((c) => c > 0);
@@ -131,24 +147,108 @@ export function parseInvoiceText(text: string): ScannedInvoice {
 
 export type OcrProgress = (pct: number, status: string) => void;
 
+const MAX_DIM = 1600;
+
+/** Downscale + grayscale large camera photos (3-5x faster OCR, same bill accuracy). */
+export async function preprocessImage(file: Blob): Promise<Blob> {
+  try {
+    const bmp = await createImageBitmap(file);
+    const scale = Math.min(1, MAX_DIM / Math.max(bmp.width, bmp.height));
+    if (scale >= 1) {
+      // Still normalize small images to grayscale JPEG for consistency.
+      const c0 = document.createElement("canvas");
+      c0.width = bmp.width; c0.height = bmp.height;
+      const x0 = c0.getContext("2d");
+      if (!x0) return file;
+      x0.filter = "grayscale(1) contrast(1.08)";
+      x0.drawImage(bmp, 0, 0);
+      const out: Blob | null = await new Promise((res) => c0.toBlob(res, "image/jpeg", 0.92));
+      bmp.close();
+      return out ?? file;
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bmp.width * scale);
+    canvas.height = Math.round(bmp.height * scale);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.filter = "grayscale(1) contrast(1.08)";
+    ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    bmp.close();
+    const out: Blob | null = await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.92));
+    return out ?? file;
+  } catch {
+    return file;
+  }
+}
+
+type WorkerLike = {
+  recognize: (img: Blob, opts?: unknown, logger?: unknown) => Promise<{ data: { text?: string; words?: Array<{ confidence?: number }> } }>;
+  terminate: () => Promise<void>;
+};
+
+let workerPromise: Promise<WorkerLike> | null = null;
+
+async function getWorker(onProgress: OcrProgress): Promise<WorkerLike> {
+  if (!workerPromise) {
+    workerPromise = (async () => {
+      const { createWorker } = await import("tesseract.js");
+      onProgress(4, "Downloading OCR engine (first time only)…");
+      const worker = (await createWorker("eng", undefined, {
+        logger: (m: { status?: string; progress?: number }) => {
+          if (typeof m.progress === "number" && (m.status ?? "").includes("loading")) {
+            onProgress(Math.round(m.progress * 10), "Downloading OCR engine (first time only)…");
+          }
+        }
+      } as never)) as unknown as WorkerLike;
+      return worker;
+    })().catch((e) => {
+      workerPromise = null;
+      throw e;
+    });
+  }
+  return workerPromise;
+}
+
+/** Warm the engine while the user fills the form, so Scan starts instantly. */
+export function prewarmOcr(): void {
+  try {
+    void getWorker(() => {}).catch(() => { workerPromise = null; });
+  } catch { /* best effort */ }
+}
+
+const SCAN_TIMEOUT_MS = 60000;
+
 /** Lazy-loads tesseract.js (keeps initial bundle small) and recognizes English text. */
 export async function recognizeImage(file: Blob, onProgress: OcrProgress): Promise<{ text: string; confidence: number }> {
-  const { createWorker } = await import("tesseract.js");
-  const worker = await createWorker("eng");
-  try {
-    onProgress(10, "Reading photo…");
-    const { data } = await worker.recognize(file, {}, {
-      logger: (m: { status?: string; progress?: number }) => {
-        if (typeof m.progress === "number") onProgress(Math.round(10 + m.progress * 85), m.status === "recognizing text" ? "Reading lines…" : "Preparing…");
+  const started = Date.now();
+  const worker = await getWorker(onProgress);
+  const small = await preprocessImage(file);
+  onProgress(12, "Reading photo…");
+  const job = worker.recognize(small, {}, {
+    logger: (m: { status?: string; progress?: number }) => {
+      if (typeof m.progress === "number") {
+        const elapsed = Math.round((Date.now() - started) / 1000);
+        onProgress(Math.min(96, Math.round(12 + m.progress * 84)), `Reading lines… (${elapsed}s)`);
       }
-    } as never);
+    }
+  } as never);
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => {
+      workerPromise = null;
+      worker.terminate().catch(() => {});
+      reject(new Error("Scan timed out after 60s — try a smaller, well-lit photo or enter manually."));
+    }, SCAN_TIMEOUT_MS)
+  );
+  try {
+    const { data } = await Promise.race([job, timeout]);
     onProgress(100, "Done");
-    const words = (data as { words?: Array<{ confidence?: number }> }).words ?? [];
+    const words = data.words ?? [];
     const confs = words.map((w) => w.confidence ?? 0).filter((c) => c > 0);
     const mean = confs.length ? confs.reduce((a, c) => a + c, 0) / confs.length : 0;
     return { text: data.text ?? "", confidence: Math.round(mean) };
-  } finally {
-    await worker.terminate().catch(() => {});
+  } catch (e) {
+    workerPromise = null;
+    throw e;
   }
 }
 

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Plus, Upload, Trash2, ReceiptText } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { API_URL, apiFetch, ApiError, inr, currentPeriod, todayISO } from "@/lib/api";
-import { scanInvoice, type ScannedInvoice } from "@/lib/ocr";
+import { scanInvoice, prewarmOcr, type ScannedInvoice } from "@/lib/ocr";
 import { useToast } from "@/components/ui/toast";
 import { Button, Card, EmptyState, Field, PageHeader, SearchInput, Select, Skeleton, TableShell, TextInput } from "@/components/ui/primitives";
 import { Modal } from "@/components/ui/modal";
@@ -87,7 +87,13 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
       }
     } finally { setLoading(false); }
   }
-  // Mount: load client list; auto-load rows only for deep-links (?client=).
+  // Warm the OCR engine while the modal is open so Scan starts instantly.
+  useEffect(() => {
+    if (showForm && !editingId) {
+      const t = setTimeout(() => prewarmOcr(), 800);
+      return () => clearTimeout(t);
+    }
+  }, [showForm, editingId]);
   useEffect(() => {
     if (!org) return;
     void loadClients().then((list) => {
@@ -155,8 +161,8 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
       const s: ScannedInvoice = await scanInvoice(file, (pct, status) => setScan({ pct, status }));
       applyScan(s);
       push(s.overall >= 60 ? "success" : "info", `Scanned (${s.overall}%) — verify highlighted fields, then Save.`);
-    } catch {
-      push("error", "Could not read this photo — enter manually; the photo stays attached below.");
+    } catch (e) {
+      push("error", e instanceof Error ? e.message : "Could not read this photo — enter manually; the photo stays attached below.");
     } finally {
       setScan(null);
     }
@@ -183,7 +189,7 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
         hsn: l.hsn.value,
         quantity: l.quantity.value ? String(l.quantity.value) : "",
         rate: l.rate.value ? String(l.rate.value) : "",
-        gstRate: "18"
+        gstRate: l.gstRate.value ? String(l.gstRate.value) : "18"
       })));
     }
   }
@@ -341,7 +347,7 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
               📷 Scan bill photo
               <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => void startScan(e.target.files?.[0])} />
             </label>
-            {scanFile ? <span className="max-w-[200px] truncate text-xs text-ink-soft">📎 {scanFile.name}</span> : <span className="text-xs text-ink-faint">Printed bills work best · free, on-device · always review before saving</span>}
+            {scanFile ? <span className="max-w-[200px] truncate text-xs text-ink-soft">📎 {scanFile.name}</span> : <span className="text-xs text-ink-faint">Printed bills · auto-shrunk for speed · free on-device</span>}
           </div>
           {scan ? (
           <div className="mt-2">
