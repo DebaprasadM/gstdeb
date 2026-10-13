@@ -291,18 +291,14 @@ export async function recognizeImage(file: Blob, onProgress: OcrProgress): Promi
   const shrinkMs = Date.now() - tShrink;
   if (myToken !== scanToken) throw new ScanCancelled();
   onProgress(16, `Reading photo… (shrunk in ${(shrinkMs / 1000).toFixed(1)}s)`);
-  let lastPct = 16;
-  const job = worker.recognize(small, {}, {
-    logger: (m: { status?: string; progress?: number }) => {
-      if (myToken !== scanToken) return;
-      if (typeof m.progress === "number") {
-        const pct = Math.min(96, Math.round(16 + m.progress * 80));
-        if (pct < lastPct + 2 && pct < 96) return; // throttle re-renders
-        lastPct = pct;
-        onProgress(pct, `Reading photo… (${elapsed()})`);
-      }
-    }
-  } as never);
+  // NOTE: never pass functions (e.g. logger) to recognize() — job args are
+  // posted to a Web Worker and functions cannot be cloned (DataCloneError +
+  // silent hang). Progress arrives via the createWorker-level logger.
+  const job = worker.recognize(small);
+  // Heartbeat so the bar visibly moves even between progress events.
+  const beat = setInterval(() => {
+    if (myToken === scanToken) onProgress(16, `Reading photo… (${elapsed()})`);
+  }, 2000);
   try {
     const { data } = await withTimeout(
       job,
@@ -310,6 +306,7 @@ export async function recognizeImage(file: Blob, onProgress: OcrProgress): Promi
       () => { workerPromise = null; worker.terminate().catch(() => {}); },
       "Reading took over 120s on this phone — try a smaller, well-lit, straight photo or enter manually."
     );
+    clearInterval(beat);
     if (myToken !== scanToken) throw new ScanCancelled();
     onProgress(100, "Done");
     const words = data.words ?? [];
@@ -317,6 +314,7 @@ export async function recognizeImage(file: Blob, onProgress: OcrProgress): Promi
     const mean = confs.length ? confs.reduce((a, c) => a + c, 0) / confs.length : 0;
     return { text: data.text ?? "", confidence: Math.round(mean) };
   } catch (e) {
+    clearInterval(beat);
     workerPromise = null;
     throw e;
   }
