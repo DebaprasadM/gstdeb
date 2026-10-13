@@ -68,10 +68,10 @@ export default function DashboardHome() {
   const today = new Intl.DateTimeFormat("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" }).format(new Date());
 
   const tiles = [
-    { label: "Deadlines due", sub: "next 14 days", value: data.upcomingDeadlines.length, bg: "bg-violet-50", text: "text-violet-700", border: "border-violet-200", icon: "📅", href: "/dashboard/tasks" },
-    { label: "Docs to review", sub: "received + corrections", value: data.docsPending, bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200", icon: "📎", href: "/dashboard/documents" },
-    { label: "Overdue tasks", sub: "needs action now", value: data.overdueTasks, bg: "bg-red-50", text: "text-red-700", border: "border-red-200", icon: "⚠️", href: "/dashboard/tasks" },
-    { label: "Active clients", sub: "shopkeepers", value: data.activeClients, bg: "bg-sky-50", text: "text-sky-700", border: "border-sky-200", icon: "👥", href: "/dashboard/clients" }
+    { label: "Deadlines due", sub: "next 14 days", value: data.upcomingDeadlines.length, bg: "bg-violet-50", text: "text-violet-900", border: "border-violet-200", icon: "📅", href: "/dashboard/tasks" },
+    { label: "Docs to review", sub: "received + corrections", value: data.docsPending, bg: "bg-emerald-50", text: "text-emerald-900", border: "border-emerald-200", icon: "📎", href: "/dashboard/documents" },
+    { label: "Overdue tasks", sub: "needs action now", value: data.overdueTasks, bg: "bg-red-50", text: "text-red-900", border: "border-red-200", icon: "⚠️", href: "/dashboard/tasks" },
+    { label: "Active clients", sub: "shopkeepers", value: data.activeClients, bg: "bg-sky-50", text: "text-sky-900", border: "border-sky-200", icon: "👥", href: "/dashboard/clients" }
   ];
 
   return (
@@ -83,7 +83,7 @@ export default function DashboardHome() {
           className="rounded-[1.75rem] px-5 pb-10 pt-5 text-white shadow-pop"
           style={{
             backgroundImage:
-              "radial-gradient(rgba(255,255,255,0.32) 1.6px, transparent 1.6px), radial-gradient(120% 90% at 85% -10%, rgba(199,210,254,0.55) 0%, transparent 55%), radial-gradient(110% 85% at -10% 110%, rgba(34,211,238,0.4) 0%, transparent 60%), linear-gradient(140deg, #2828C8 0%, #4343E8 55%, #5B5BF0 130%)",
+              "radial-gradient(rgba(255,255,255,0.15) 1.4px, transparent 1.4px), radial-gradient(120% 90% at 85% -10%, rgba(199,210,254,0.55) 0%, transparent 55%), radial-gradient(110% 85% at -10% 110%, rgba(34,211,238,0.4) 0%, transparent 60%), linear-gradient(140deg, #2828C8 0%, #4343E8 55%, #5B5BF0 130%)",
             backgroundSize: "20px 20px, cover, cover, cover"
           }}
         >
