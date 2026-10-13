@@ -151,12 +151,19 @@ export class ScanCancelled extends Error {
   constructor() { super("Scan cancelled"); this.name = "ScanCancelled"; }
 }
 
-const MAX_DIM = 1200;
+const MAX_DIM = 1000;
+const MAX_BYTES = 8 * 1024 * 1024;
 
 /** Downscale + grayscale large camera photos (3-5x faster OCR, same bill accuracy). */
 export async function preprocessImage(file: Blob): Promise<Blob> {
   try {
-    const bmp = await createImageBitmap(file);
+    // Respect EXIF orientation — sideways photos grind OCR to a halt.
+    let bmp: ImageBitmap;
+    try {
+      bmp = await createImageBitmap(file, { imageOrientation: "from-image" } as ImageBitmapOptions);
+    } catch {
+      bmp = await createImageBitmap(file);
+    }
     const scale = Math.min(1, MAX_DIM / Math.max(bmp.width, bmp.height));
     if (scale >= 1) {
       // Still normalize small images to grayscale JPEG for consistency.
@@ -235,14 +242,34 @@ export function prewarmOcr(): void {
   } catch { /* best effort */ }
 }
 
-const SCAN_TIMEOUT_MS = 60000;
+const DOWNLOAD_TIMEOUT_MS = 120000;
+const READ_TIMEOUT_MS = 120000;
+
+function withTimeout<T>(p: Promise<T>, ms: number, onTimeout: () => void, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      onTimeout();
+      reject(new Error(message));
+    }, ms);
+  });
+  return Promise.race([p.finally(() => clearTimeout(timer)), timeout]);
+}
 
 /** Lazy-loads tesseract.js (keeps initial bundle small) and recognizes English text. */
 export async function recognizeImage(file: Blob, onProgress: OcrProgress): Promise<{ text: string; confidence: number }> {
+  if (file.size > MAX_BYTES) {
+    throw new Error(`Photo is ${(file.size / 1048576).toFixed(1)} MB — too large for on-device scan. Retake closer to the bill or pick a smaller file.`);
+  }
   const myToken = scanToken;
   const started = Date.now();
   const elapsed = () => `${Math.round((Date.now() - started) / 1000)}s`;
-  const worker = await getWorker(onProgress);
+  const worker = await withTimeout(
+    getWorker(onProgress),
+    DOWNLOAD_TIMEOUT_MS,
+    () => { workerPromise = null; },
+    "Engine download timed out (120s) — check connection and retry; it downloads once, then stays cached."
+  );
   if (myToken !== scanToken) throw new ScanCancelled();
   onProgress(12, "Shrinking photo for speed…");
   const small = await preprocessImage(file);
@@ -256,15 +283,13 @@ export async function recognizeImage(file: Blob, onProgress: OcrProgress): Promi
       }
     }
   } as never);
-  const timeout = new Promise<never>((_, reject) =>
-    setTimeout(() => {
-      workerPromise = null;
-      worker.terminate().catch(() => {});
-      reject(new Error("Scan timed out after 60s — try a smaller, well-lit photo or enter manually."));
-    }, SCAN_TIMEOUT_MS)
-  );
   try {
-    const { data } = await Promise.race([job, timeout]);
+    const { data } = await withTimeout(
+      job,
+      READ_TIMEOUT_MS,
+      () => { workerPromise = null; worker.terminate().catch(() => {}); },
+      "Reading took over 120s on this phone — try a smaller, well-lit, straight photo or enter manually."
+    );
     if (myToken !== scanToken) throw new ScanCancelled();
     onProgress(100, "Done");
     const words = data.words ?? [];
