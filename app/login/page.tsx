@@ -19,11 +19,29 @@ export default function LoginPage() {
   const { push } = useToast();
   const [serverError, setServerError] = useState("");
   const [expiredNote, setExpiredNote] = useState(false);
+  const [diag, setDiag] = useState<string | null>(null);
+  const [diagBusy, setDiagBusy] = useState(false);
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get("reason") === "session") {
       setExpiredNote(true);
     }
   }, []);
+
+  async function runDiagnostics() {
+    setDiagBusy(true);
+    setDiag(null);
+    try {
+      const r = await apiFetch<{ data: Record<string, unknown> }>("/api/v1/auth/session-check");
+      const d = r.data;
+      setDiag(
+        `sid cookie: ${d.sidCookieReceived ? "OK ✅" : "MISSING ❌"} · csrf cookie: ${d.csrfCookieReceived ? "OK ✅" : "MISSING ❌"} · session: ${d.sessionValid ? "VALID ✅" : "DEAD ❌ (" + d.sessionReason + ")"}`
+      );
+    } catch {
+      setDiag("API unreachable ❌ — check internet / adblock / VPN.");
+    } finally {
+      setDiagBusy(false);
+    }
+  }
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<z.infer<typeof schema>>({ resolver: zodResolver(schema) });
 
   async function onSubmit(values: z.infer<typeof schema>) {
@@ -68,6 +86,12 @@ export default function LoginPage() {
             {serverError ? <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{serverError}</p> : null}
             <Button disabled={isSubmitting} className="w-full"><LogIn size={16} /> {isSubmitting ? "Signing in…" : "Sign in"}</Button>
             <p className="text-center text-sm text-ink-soft">New firm? <Link href="/signup" className="font-medium text-primary underline underline-offset-2">Start free trial</Link></p>
+            <div className="border-t border-slate-100 pt-3 text-center">
+              <button type="button" onClick={() => void runDiagnostics()} disabled={diagBusy} className="text-xs font-medium text-ink-faint underline underline-offset-2 hover:text-primary">
+                {diagBusy ? "Testing…" : "Login trouble? Test connection"}
+              </button>
+              {diag ? <p className="mt-2 rounded-lg bg-background px-3 py-2 text-left text-xs text-ink">{diag}</p> : null}
+            </div>
           </form>
         </div>
       </div>
