@@ -3,7 +3,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Gauge, Building2, Layers, ReceiptText, ScrollText, LifeBuoy } from "lucide-react";
 import { useAuth } from "@/lib/auth";
-import { Skeleton, Avatar } from "@/components/ui/primitives";
+import { Avatar } from "@/components/ui/primitives";
+import { SplashScreen } from "@/components/ui/splash";
 import { cn } from "@/lib/cn";
 
 const NAV = [
@@ -18,7 +19,7 @@ const NAV = [
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { me, loading } = useAuth();
   const path = usePathname();
-  if (loading) return <main className="mx-auto max-w-6xl px-5 py-10"><Skeleton /></main>;
+  if (loading) return <SplashScreen message="Opening admin console…" />;
   if (!me) { if (typeof window !== "undefined") window.location.href = "/login"; return null; }
   if (me.role !== "SUPER_ADMIN") {
     return (

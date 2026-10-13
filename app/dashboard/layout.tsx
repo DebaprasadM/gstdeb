@@ -6,7 +6,8 @@ import {
   LayoutDashboard, Users, FileUp, ShoppingCart, Receipt, FileBarChart, CalendarClock, Wallet, CreditCard, LogOut, X, House, Ellipsis
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
-import { Skeleton, Avatar } from "@/components/ui/primitives";
+import { Avatar } from "@/components/ui/primitives";
+import { SplashScreen } from "@/components/ui/splash";
 import { cn } from "@/lib/cn";
 
 const NAV = [
@@ -32,7 +33,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { me, loading, logout } = useAuth();
   const path = usePathname();
   const [open, setOpen] = useState(false);
-  if (loading) return <main className="mx-auto max-w-6xl px-5 py-10"><Skeleton /></main>;
+  if (loading) return <SplashScreen message="Opening your firm workspace…" />;
   if (!me) { if (typeof window !== "undefined") window.location.href = "/login"; return null; }
   const org = me.organizations[0];
   const isActive = (href: string) => (href === "/dashboard" ? path === href : path.startsWith(href));
