@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Plus, Upload, Trash2, ReceiptText } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { API_URL, apiFetch, ApiError, inr, currentPeriod, todayISO } from "@/lib/api";
+import { scanInvoice, type ScannedInvoice } from "@/lib/ocr";
 import { useToast } from "@/components/ui/toast";
 import { Button, Card, EmptyState, Field, PageHeader, SearchInput, Select, Skeleton, TableShell, TextInput } from "@/components/ui/primitives";
 import { Modal } from "@/components/ui/modal";
@@ -39,6 +40,9 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
   const [suggest, setSuggest] = useState<Array<{ description: string; hsn: string | null; rate: string; gstRate: string }>>([]);
   const [cloneNum, setCloneNum] = useState("");
   const [cloneDate, setCloneDate] = useState(() => todayISO());
+  const [scan, setScan] = useState<{ pct: number; status: string } | null>(null);
+  const [scanFile, setScanFile] = useState<File | null>(null);
+  const [fieldConf, setFieldConf] = useState<Record<string, number>>({});
 
   const itemsTotal = lines.reduce((a, l) => a + lineAmount(l), 0);
   const partyLabel = kind === "sales" ? "Customer" : "Supplier";
@@ -104,6 +108,8 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
     setEditingId(null);
     setLines([blankLine()]);
     setSaveDraft(false);
+    setScanFile(null);
+    setFieldConf({});
     setShowForm(true);
   }
 
@@ -139,6 +145,51 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
       setSuggest(res.data);
     } catch { /* suggestions are best-effort */ }
   }
+
+  async function startScan(file: File | undefined) {
+    if (!file) return;
+    if (!form.clientId) { push("error", "Pick a client first, then scan."); return; }
+    setScanFile(file);
+    setScan({ pct: 0, status: "Loading OCR engine (one-time download)…" });
+    try {
+      const s: ScannedInvoice = await scanInvoice(file, (pct, status) => setScan({ pct, status }));
+      applyScan(s);
+      push(s.overall >= 60 ? "success" : "info", `Scanned (${s.overall}%) — verify highlighted fields, then Save.`);
+    } catch {
+      push("error", "Could not read this photo — enter manually; the photo stays attached below.");
+    } finally {
+      setScan(null);
+    }
+  }
+
+  function applyScan(s: ScannedInvoice) {
+    const conf: Record<string, number> = {
+      invoiceNumber: s.invoiceNumber.confidence,
+      invoiceDate: s.invoiceDate.confidence,
+      party: s.partyName.confidence,
+      partyGstin: s.partyGstin.confidence
+    };
+    setFieldConf(conf);
+    setForm((f) => ({
+      ...f,
+      invoiceNumber: s.invoiceNumber.value || f.invoiceNumber,
+      invoiceDate: s.invoiceDate.value || f.invoiceDate,
+      party: s.partyName.value || f.party,
+      partyGstin: s.partyGstin.value || f.partyGstin
+    }));
+    if (s.lines.length) {
+      setLines(s.lines.map((l) => ({
+        description: l.description.value,
+        hsn: l.hsn.value,
+        quantity: l.quantity.value ? String(l.quantity.value) : "",
+        rate: l.rate.value ? String(l.rate.value) : "",
+        gstRate: "18"
+      })));
+    }
+  }
+
+  const confRing = (key: string) =>
+    fieldConf[key] !== undefined && fieldConf[key]! < 60 ? " !border-amber-400 !ring-2 !ring-amber-200" : "";
 
   function pickSuggestion(i: number, desc: string) {
     const hit = suggest.find((s) => s.description.toLowerCase() === desc.trim().toLowerCase());
@@ -181,6 +232,7 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
         await apiFetch(`/api/v1/organizations/${org!.id}/${kind}/${editingId}`, { method: "PATCH", body: JSON.stringify(body) });
       } else {
         await apiFetch(`/api/v1/organizations/${org!.id}/${kind}`, { method: "POST", body: JSON.stringify(body) });
+        await attachScanPhoto(form.clientId, form.period);
       }
       setForm({ ...form, invoiceNumber: "", party: "", partyGstin: "" });
       setLines([blankLine()]);
@@ -213,6 +265,24 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
       setCloneNum("");
       void load();
     } catch (e) { push("error", e instanceof ApiError ? e.message : "Clone failed"); }
+  }
+
+  async function attachScanPhoto(clientId: string, period: string) {
+    if (!scanFile || !org) return;
+    try {
+      const fd = new FormData();
+      fd.append("file", scanFile);
+      fd.append("period", period);
+      fd.append("category", kind === "sales" ? "SALES_INVOICE" : "PURCHASE_BILL");
+      fd.append("description", "Scanned bill photo (OCR source)");
+      const csrf = document.cookie.match(/(?:^|; )csrf=([^;]*)/)?.[1];
+      const res = await fetch(`${API_URL}/api/v1/organizations/${org.id}/clients/${clientId}/documents`, {
+        method: "POST", credentials: "include",
+        headers: csrf ? { "x-csrf-token": decodeURIComponent(csrf) } : {}, body: fd
+      });
+      if (res.ok) push("info", "Bill photo attached to documents.");
+    } catch { /* attachment is best-effort */ }
+    finally { setScanFile(null); }
   }
 
   async function importFile(f: File | undefined) {
@@ -264,12 +334,29 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
       </Card>
       {showForm ? (
       <Modal title={editingId ? `Edit ${kind === "sales" ? "sales" : "purchase"} invoice` : `New ${kind === "sales" ? "sales" : "purchase"} invoice`} onClose={() => { setShowForm(false); setEditingId(null); }} wide>
+        {!editingId ? (
+        <div className="mb-3 rounded-xl border border-dashed border-slate-300 bg-background px-3 py-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[13px] font-semibold text-white">
+              📷 Scan bill photo
+              <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => void startScan(e.target.files?.[0])} />
+            </label>
+            {scanFile ? <span className="max-w-[200px] truncate text-xs text-ink-soft">📎 {scanFile.name}</span> : <span className="text-xs text-ink-faint">Printed bills work best · free, on-device · always review before saving</span>}
+          </div>
+          {scan ? (
+          <div className="mt-2">
+            <p className="text-xs text-ink-soft">{scan.status}</p>
+            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${scan.pct}%` }} /></div>
+          </div>
+          ) : null}
+        </div>
+        ) : null}
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Client"><Select value={form.clientId} onChange={(e) => setForm({ ...form, clientId: e.target.value })}>{clients.map((c) => <option key={c.id} value={c.id}>{c.businessName}</option>)}</Select></Field>
-          <Field label="Invoice no."><TextInput value={form.invoiceNumber} onChange={(e) => setForm({ ...form, invoiceNumber: e.target.value })} placeholder="S-1024" /></Field>
-          <Field label="Date"><TextInput type="date" value={form.invoiceDate} onChange={(e) => setForm({ ...form, invoiceDate: e.target.value })} /></Field>
-          <Field label={`${partyLabel} name`}><TextInput value={form.party} onChange={(e) => setForm({ ...form, party: e.target.value })} placeholder={kind === "sales" ? "Anup General Store" : "Metro Wholesale"} /></Field>
-          <Field label={`${partyLabel} GSTIN (optional)`}><TextInput value={form.partyGstin} onChange={(e) => setForm({ ...form, partyGstin: e.target.value.toUpperCase() })} placeholder="19…" /></Field>
+          <Field label="Invoice no."><TextInput value={form.invoiceNumber} onChange={(e) => setForm({ ...form, invoiceNumber: e.target.value })} placeholder="S-1024" className={confRing("invoiceNumber")} /></Field>
+          <Field label="Date"><TextInput type="date" value={form.invoiceDate} onChange={(e) => setForm({ ...form, invoiceDate: e.target.value })} className={confRing("invoiceDate")} /></Field>
+          <Field label={`${partyLabel} name`}><TextInput value={form.party} onChange={(e) => setForm({ ...form, party: e.target.value })} placeholder={kind === "sales" ? "Anup General Store" : "Metro Wholesale"} className={confRing("party")} /></Field>
+          <Field label={`${partyLabel} GSTIN (optional)`}><TextInput value={form.partyGstin} onChange={(e) => setForm({ ...form, partyGstin: e.target.value.toUpperCase() })} placeholder="19…" className={confRing("partyGstin")} /></Field>
           <Field label="Invoice type"><Select value={form.invoiceType} onChange={(e) => setForm({ ...form, invoiceType: e.target.value })}><option>B2B</option><option>B2C</option><option>SEZ</option><option>EXPORT</option><option>DEEMED</option><option>RCM</option></Select></Field>
           <Field label="Place of supply (state code)"><TextInput value={form.placeOfSupply} onChange={(e) => setForm({ ...form, placeOfSupply: e.target.value })} placeholder="19 = WB, blank = same state" /></Field>
           <Field label="Discount ₹"><TextInput inputMode="decimal" value={form.discount} onChange={(e) => setForm({ ...form, discount: e.target.value })} placeholder="0" /></Field>
