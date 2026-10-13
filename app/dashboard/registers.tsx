@@ -21,7 +21,8 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
   const [clients, setClients] = useState<Array<{ id: string; businessName: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({ clientId: "", invoiceNumber: "", invoiceDate: todayISO(), gstRate: "18", period: currentPeriod(), party: "", partyGstin: "" });
-  // Deep-link: ?client=<id> preselects (e.g. from the client detail page)
+  // "" = not chosen yet: user picks a client first, then rows load.
+  // Deep-link (?client=<id>) preselects, e.g. from the client detail page.
   const [clientFilter, setClientFilter] = useState(() =>
     typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("client") ?? "" : ""
   );
@@ -35,18 +36,25 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
   const itemsTotal = lines.reduce((a, l) => a + lineAmount(l), 0);
   const partyLabel = kind === "sales" ? "Customer" : "Supplier";
 
-  async function load(opts?: { period?: string }) {
+  async function loadClients() {
+    if (!org) return [];
+    const c = await apiFetch<{ data: Array<{ id: string; businessName: string }> }>(`/api/v1/organizations/${org.id}/clients?pageSize=100`);
+    setClients(c.data);
+    return c.data;
+  }
+
+  function chooseClient(fid: string) {
+    setClientFilter(fid);
+    if (fid !== "all") setForm((f) => ({ ...f, clientId: fid }));
+    void load({ clientId: fid });
+  }
+
+  async function load(opts?: { period?: string; clientId?: string; retried?: boolean }) {
     if (!org) return;
+    const fid = opts?.clientId ?? clientFilter;
+    if (!fid) return; // nothing chosen yet — rows stay empty until user picks
     setLoading(true);
     try {
-      const c = await apiFetch<{ data: Array<{ id: string; businessName: string }> }>(`/api/v1/organizations/${org.id}/clients?pageSize=100`);
-      setClients(c.data);
-      // Default: first client only (per-client working view). "All clients" stays one click away.
-      let fid = clientFilter;
-      if (!fid || (fid !== "all" && !c.data.some((x) => x.id === fid))) {
-        fid = c.data[0]?.id ?? "all";
-        setClientFilter(fid);
-      }
       const per = opts?.period ?? periodFilter;
       const params = new URLSearchParams();
       if (fid !== "all") params.set("clientId", fid);
@@ -55,22 +63,31 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
       const qs = params.toString() ? `?${params.toString()}` : "";
       const r = await apiFetch<{ data: any[] }>(`/api/v1/organizations/${org.id}/${kind}${qs}`);
       setRows(r.data);
-      if (!form.clientId && c.data[0]) setForm((f) => ({ ...f, clientId: fid !== "all" ? fid : c.data[0]!.id }));
-      // Smart fallback: current month empty → jump to the latest month that has entries.
-      if (!opts && r.data.length === 0 && !invoiceSearch.trim() && /^\d{4}-\d{2}$/.test(per)) {
+      // Smart fallback: chosen month empty → jump to latest month with entries.
+      if (!opts?.retried && r.data.length === 0 && !invoiceSearch.trim() && /^\d{4}-\d{2}$/.test(per)) {
         const scope = fid !== "all" ? `&clientId=${fid}` : "";
         const latest = await apiFetch<{ data: Array<{ period: string }> }>(`/api/v1/organizations/${org.id}/${kind}?pageSize=1${scope}`);
         const p = latest.data[0]?.period;
         if (p && p !== per) {
           setPeriodFilter(p);
           push("info", `No entries in ${per} — showing ${p} instead.`);
-          await load({ period: p });
+          await load({ period: p, clientId: fid, retried: true });
         }
       }
     } finally { setLoading(false); }
   }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { if (org) void load(); }, [org?.id]);
+  // Mount: load client list; auto-load rows only for deep-links (?client=).
+  useEffect(() => {
+    if (!org) return;
+    void loadClients().then((list) => {
+      const deep = new URLSearchParams(window.location.search).get("client") ?? "";
+      if (deep && (deep === "all" || list.some((x) => x.id === deep))) {
+        setClientFilter(deep);
+        if (deep !== "all") setForm((f) => ({ ...f, clientId: deep }));
+        void load({ clientId: deep });
+      } else setLoading(false);
+    });
+  }, [org?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function setLine(i: number, patch: Partial<Line>) {
     setLines((xs) => xs.map((l, j) => (j === i ? { ...l, ...patch } : l)));
@@ -126,6 +143,8 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
 
   if (!org) return <EmptyState title="No organization" hint="Your account has no firm attached." />;
   const title = kind === "sales" ? "Sales register" : "Purchase register";
+  // Client column only matters when rows span multiple clients.
+  const showClientCol = clientFilter === "all" || !clientFilter;
   return (
     <div className="space-y-5">
       <PageHeader
@@ -133,6 +152,16 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
         sub="Who bought what, line by line · taxes split server-side"
         actions={<><Button size="sm" onClick={() => setShowForm(true)}><Plus size={15} /> New invoice</Button><label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-ink transition-colors hover:border-primary hover:text-primary"><Upload size={15} /> Import Excel/CSV<input type="file" accept=".csv,.xls,.xlsx" className="hidden" onChange={(e) => void importFile(e.target.files?.[0])} /></label></>}
       />
+      <div className="flex flex-wrap items-center gap-2">
+        <Select value={clientFilter} onChange={(e) => chooseClient(e.target.value)} className="!w-auto">
+          <option value="">Select a client…</option>
+          <option value="all">All clients</option>
+          {clients.map((c) => <option key={c.id} value={c.id}>{c.businessName}</option>)}
+        </Select>
+        <div className="w-56"><SearchInput value={invoiceSearch} onChange={setInvoiceSearch} placeholder="Search invoice no…" /></div>
+        <TextInput type="month" value={periodFilter} onChange={(e) => setPeriodFilter(e.target.value)} className="!w-auto" aria-label="Filter by month" />
+        <Button size="sm" variant="outline" onClick={() => void load()}>Apply filters</Button>
+      </div>
       {showForm ? (
       <Modal title={`New ${kind === "sales" ? "sales" : "purchase"} invoice`} onClose={() => setShowForm(false)} wide>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -166,22 +195,18 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
         </div>
       </Modal>
       ) : null}
-      {loading ? <Skeleton /> : rows.length === 0 ? <EmptyState title={`No ${kind} yet`} hint="Save your first invoice above, or import a month's bills from Excel/CSV." /> :
+      {loading ? <Skeleton /> : !clientFilter ? (
+        <EmptyState
+          title={`Whose ${kind} do you want to see?`}
+          hint="Choose a client from the dropdown above — their bills will load here. Or choose All clients."
+        />
+      ) : rows.length === 0 ? <EmptyState title={`No ${kind} yet`} hint="Save your first invoice above, or import a month's bills from Excel/CSV." /> :
         <>
-          <div className="flex flex-wrap items-center gap-2">
-            <Select value={clientFilter} onChange={(e) => { setClientFilter(e.target.value); if (e.target.value !== "all") setForm((f) => ({ ...f, clientId: e.target.value })); }} className="!w-auto">
-              <option value="all">All clients</option>
-              {clients.map((c) => <option key={c.id} value={c.id}>{c.businessName}</option>)}
-            </Select>
-            <div className="w-56"><SearchInput value={invoiceSearch} onChange={setInvoiceSearch} placeholder="Search invoice no…" /></div>
-            <TextInput type="month" value={periodFilter} onChange={(e) => setPeriodFilter(e.target.value)} className="!w-auto" aria-label="Filter by month" />
-            <Button size="sm" variant="outline" onClick={() => void load()}>Apply filters</Button>
-          </div>
-          <TableShell head={["Invoice", "Client", partyLabel, "Items", "Taxable", "CGST", "SGST", "IGST", "Total"]}>
-            {rows.map((r) => (
-              <tr key={r.id}>
-                <td className="font-medium text-ink">{r.invoiceNumber}<span className="block text-[11px] font-normal text-ink-faint">{String(r.invoiceDate).slice(0, 10)}</span></td>
-                <td><span className="inline-flex items-center rounded-full bg-secondary-50 px-2.5 py-0.5 text-[12px] font-semibold text-secondary-700 ring-1 ring-inset ring-secondary-100">{r.client?.businessName}</span></td>
+          <TableShell head={showClientCol ? ["Invoice", "Client", partyLabel, "Items", "Taxable", "CGST", "SGST", "IGST", "Total"] : ["Invoice", partyLabel, "Items", "Taxable", "CGST", "SGST", "IGST", "Total"]}>
+          {rows.map((r) => (
+            <tr key={r.id}>
+              <td className="font-medium text-ink">{r.invoiceNumber}<span className="block text-[11px] font-normal text-ink-faint">{String(r.invoiceDate).slice(0, 10)}</span></td>
+              {showClientCol ? <td><span className="inline-flex items-center rounded-full bg-secondary-50 px-2.5 py-0.5 text-[12px] font-semibold text-secondary-700 ring-1 ring-inset ring-secondary-100">{r.client?.businessName}</span></td> : null}
                 <td className="max-w-[180px] truncate text-ink-soft" title={kind === "sales" ? (r.customerName ?? "") : r.supplierName}>{kind === "sales" ? (r.customerName ?? "—") : r.supplierName}</td>
               <td><button onClick={() => setViewing(r)} className="inline-flex items-center gap-1 rounded-full bg-primary-50 px-2.5 py-1 text-[12px] font-medium text-primary hover:bg-primary-100"><ReceiptText size={13} /> {r.items?.length ?? 0} item{(r.items?.length ?? 0) === 1 ? "" : "s"}</button></td>
               <td className="tnum">{inr(Number(r.taxableValue))}</td>
