@@ -215,17 +215,31 @@ async function getWorker(onProgress: OcrProgress): Promise<WorkerLike> {
       onProgress(4, "Starting scan engine…");
       // Self-hosted assets (public/tess, populated by scripts/fetch-tess.mjs):
       // same-origin, edge-cached, no third-party CDN at scan time.
+      // Preflight first: if our files are missing, fall back to CDN defaults.
+      const selfHosted = await (async () => {
+        try {
+          const [w, t] = await Promise.all([
+            fetch("/tess/worker.min.js", { method: "HEAD" }),
+            fetch("/tess/eng.traineddata.gz", { method: "HEAD" })
+          ]);
+          return w.ok && t.ok;
+        } catch {
+          return false;
+        }
+      })();
+      if (!selfHosted) onProgress(4, "Own server lacks engine files — using CDN fallback…");
+      const t0 = Date.now();
       const worker = (await createWorker("eng", undefined, {
-        workerPath: "/tess/worker.min.js",
-        langPath: "/tess",
-        corePath: "/tess",
-        cacheMethod: "write",
+        ...(selfHosted
+          ? { workerPath: "/tess/worker.min.js", langPath: "/tess", corePath: "/tess", cacheMethod: "write" }
+          : {}),
         logger: (m: { status?: string; progress?: number }) => {
           if (typeof m.progress === "number" && (m.status ?? "").includes("loading")) {
             onProgress(Math.round(m.progress * 10), "Loading scan engine (first time only)…");
           }
         }
       } as never)) as unknown as WorkerLike;
+      onProgress(10, `Engine ready in ${Math.round((Date.now() - t0) / 1000)}s${selfHosted ? " (own server)" : " (CDN)"}.`);
       return worker;
     })().catch((e) => {
       workerPromise = null;
@@ -272,14 +286,20 @@ export async function recognizeImage(file: Blob, onProgress: OcrProgress): Promi
   );
   if (myToken !== scanToken) throw new ScanCancelled();
   onProgress(12, "Shrinking photo for speed…");
+  const tShrink = Date.now();
   const small = await preprocessImage(file);
+  const shrinkMs = Date.now() - tShrink;
   if (myToken !== scanToken) throw new ScanCancelled();
-  onProgress(16, "Reading photo…");
+  onProgress(16, `Reading photo… (shrunk in ${(shrinkMs / 1000).toFixed(1)}s)`);
+  let lastPct = 16;
   const job = worker.recognize(small, {}, {
     logger: (m: { status?: string; progress?: number }) => {
       if (myToken !== scanToken) return;
       if (typeof m.progress === "number") {
-        onProgress(Math.min(96, Math.round(16 + m.progress * 80)), `Reading photo… (${elapsed()})`);
+        const pct = Math.min(96, Math.round(16 + m.progress * 80));
+        if (pct < lastPct + 2 && pct < 96) return; // throttle re-renders
+        lastPct = pct;
+        onProgress(pct, `Reading photo… (${elapsed()})`);
       }
     }
   } as never);
