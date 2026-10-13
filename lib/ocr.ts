@@ -205,11 +205,17 @@ async function getWorker(onProgress: OcrProgress): Promise<WorkerLike> {
   if (!workerPromise) {
     workerPromise = (async () => {
       const { createWorker } = await import("tesseract.js");
-      onProgress(4, "Downloading OCR engine (first time only)…");
+      onProgress(4, "Starting scan engine…");
+      // Self-hosted assets (public/tess, populated by scripts/fetch-tess.mjs):
+      // same-origin, edge-cached, no third-party CDN at scan time.
       const worker = (await createWorker("eng", undefined, {
+        workerPath: "/tess/worker.min.js",
+        langPath: "/tess",
+        corePath: "/tess",
+        cacheMethod: "write",
         logger: (m: { status?: string; progress?: number }) => {
           if (typeof m.progress === "number" && (m.status ?? "").includes("loading")) {
-            onProgress(Math.round(m.progress * 10), "Downloading OCR engine (first time only)…");
+            onProgress(Math.round(m.progress * 10), "Loading scan engine (first time only)…");
           }
         }
       } as never)) as unknown as WorkerLike;
