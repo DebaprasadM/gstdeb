@@ -34,6 +34,17 @@ function num(s: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/** Re-insert spaces OCR dropped: "BasmatiRice25kgbag" → "Basmati Rice 25 kg bag". */
+export function deglueWords(s: string): string {
+  return s
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/([A-Za-z])(\d)/g, "$1 $2")
+    .replace(/(\d)([A-Za-z])/g, "$1 $2")
+    .replace(/(\d\s?[A-Za-z]{1,3})([A-Za-z]{3,})/g, "$1 $2") // unit glued to word: "25 kgbag" → "25 kg bag"
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /** DD/MM/YYYY, DD-MM-YY, YYYY-MM-DD → YYYY-MM-DD. */
 function parseDate(text: string): ScannedField<string> {
   const m =
@@ -84,15 +95,16 @@ export function parseInvoiceText(text: string): ScannedInvoice {
   const date = parseDate(text);
 
   // Party: line near "billed to / buyer / customer", else first ALL-CAPS-ish line.
+  // Deglued too — but never touch anything shaped like a code (GSTIN/numbers).
   let party = "", partyConf = 0;
   const partyLine = nearKeyword(lines, ["billed to", "buyer", "customer", "consignee", "party"]);
   if (partyLine) {
     const after = partyLine.split(/billed to|buyer|customer|consignee|party/i)[1]?.replace(/^[:\-\s]+/, "").trim();
-    if (after && after.length > 2) { party = after.slice(0, 80); partyConf = 55; }
+    if (after && after.length > 2 && !/^\d/.test(after)) { party = deglueWords(after).slice(0, 80); partyConf = 55; }
   }
   if (!party) {
     const cand = lines.find((l) => /^[A-Z][A-Za-z .&]{4,60}$/.test(l) && !/invoice|tax|gst|total|date|bill/i.test(l));
-    if (cand) { party = cand; partyConf = 35; }
+    if (cand) { party = deglueWords(cand); partyConf = 35; }
   }
 
   const totalLn = nearKeyword(lines, ["grand total", "net payable", "net amount", "invoice value", "amount payable", "total amount"]);
@@ -106,7 +118,7 @@ export function parseInvoiceText(text: string): ScannedInvoice {
   const itemLines: ScannedLine[] = [];
   const pushLine = (desc: string, hsn: string, qty: number, rate: number, gst: number | null, conf: number) => {
     if (itemLines.length >= 8 || !(qty > 0) || !(rate >= 0)) return;
-    const clean = desc.replace(/^[\d\s\-.)]+/, "").trim().slice(0, 120);
+    const clean = deglueWords(desc).slice(0, 120);
     if (clean.length < 2) return;
     itemLines.push({
       description: { value: clean, confidence: conf },
@@ -124,8 +136,12 @@ export function parseInvoiceText(text: string): ScannedInvoice {
     return best;
   };
   for (const raw of lines) {
-    // Normalize separators: × * ✕ → x ; collapse whitespace.
-    const ln = raw.replace(/[×✕*]/g, "x").replace(/\s+/g, " ").trim();
+    // Normalize separators + unglue tokens OCR merged (e.g. "bag1006", "Rice25kg").
+    const ln = raw
+      .replace(/[×✕*]/g, "x")
+      .replace(/\s+/g, " ")
+      .replace(/([A-Za-z])(\d{4,8})(?=[\s]|$)/g, "$1 $2")
+      .trim();
     if (ln.length < 5 || NOISE.test(ln)) continue;
     // A) full table row: "Desc HSN qty x rate gst amount" (HSN may glue to qty).
     const full = ln.match(/^(.{2,70}?)\s+(\d{4,8})\s*?(\d+(?:\.\d+)?)\s*x\s*([\d,]+(?:\.\d{1,2})?)\s+(\d+(?:\.\d+)?)\s+([\d,]+(?:\.\d{1,2})?)\s*$/);

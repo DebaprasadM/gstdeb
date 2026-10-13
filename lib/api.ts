@@ -31,21 +31,40 @@ export function redirectToLogin(reason: string) {
   window.location.href = `/login?reason=${reason}`;
 }
 
-export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+function isCsrfFailure(e: unknown): boolean {
+  return e instanceof ApiError && e.status === 403 && /csrf/i.test(e.message);
+}
+
+async function rawFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   const csrf = getCsrf();
   if (csrf && init?.method && init.method !== "GET") headers["x-csrf-token"] = csrf;
   const res = await fetch(`${API_URL}${path}`, { credentials: "include", ...init, headers: { ...headers, ...(init?.headers as Record<string, string>) } });
   const body = await res.json().catch(() => null);
-  if (!res.ok) {
-    const err = new ApiError(res.status, body?.error?.code ?? "ERROR", body?.error?.message ?? `API ${res.status}`);
-    // Mutations fail auth/CSRF checks when the session died (new login fixes it).
-    if (init?.method && init.method !== "GET" && isAuthFailure(err)) {
+  if (!res.ok) throw new ApiError(res.status, body?.error?.code ?? "ERROR", body?.error?.message ?? `API ${res.status}`);
+  return body as T;
+}
+
+export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  try {
+    return await rawFetch<T>(path, init);
+  } catch (e) {
+    // CSRF token lost but session alive (new tab, cleared cookies)? Refresh
+    // the token from the live session and retry once — no re-login needed.
+    if (init?.method && init.method !== "GET" && isCsrfFailure(e)) {
+      try {
+        await rawFetch("/api/v1/auth/csrf", { method: "POST" });
+        return await rawFetch<T>(path, init);
+      } catch (retryErr) {
+        if (isAuthFailure(retryErr)) redirectToLogin("session");
+        throw retryErr;
+      }
+    }
+    if (init?.method && init.method !== "GET" && isAuthFailure(e)) {
       redirectToLogin("session");
     }
-    throw err;
+    throw e;
   }
-  return body as T;
 }
 
 export function inr(n: number | string): string {

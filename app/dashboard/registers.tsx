@@ -180,6 +180,10 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
     };
     setFieldConf(conf);
     setScanText(s.rawText);
+    const gstUnknown = s.lines.filter((l) => !l.gstRate.confidence).length;
+    if (s.lines.length && gstUnknown > 0) {
+      setTimeout(() => push("info", `${gstUnknown} line(s): GST% not readable — defaulted to 18%. Please verify each line.`), 600);
+    }
     setForm((f) => ({
       ...f,
       invoiceNumber: s.invoiceNumber.value || f.invoiceNumber,
