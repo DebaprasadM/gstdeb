@@ -4,7 +4,6 @@ import { usePathname } from "next/navigation";
 import { Gauge, Building2, Layers, ReceiptText, ScrollText, LifeBuoy } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { Avatar } from "@/components/ui/primitives";
-import { SplashScreen } from "@/components/ui/splash";
 import { cn } from "@/lib/cn";
 
 const NAV = [
@@ -19,7 +18,7 @@ const NAV = [
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { me, loading } = useAuth();
   const path = usePathname();
-  if (loading) return <SplashScreen message="Opening admin console…" />;
+  if (loading) return <main className="flex min-h-screen items-center justify-center"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-600 to-primary-800 text-lg font-bold text-white shadow-pop"><span className="animate-bounce">হি</span></span></main>;
   if (!me) { if (typeof window !== "undefined") window.location.href = "/login"; return null; }
   if (me.role !== "SUPER_ADMIN") {
     return (

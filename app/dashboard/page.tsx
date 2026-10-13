@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Users, FileUp, CalendarClock, Wallet, Plus, ArrowRight, AlarmClock } from "lucide-react";
+import { Users, FileUp, CalendarClock, Wallet, Plus, ArrowRight, AlarmClock, ShoppingCart, BadgeCheck } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useAuth } from "@/lib/auth";
 import { apiFetch, inr } from "@/lib/api";
@@ -28,7 +28,6 @@ export default function DashboardHome() {
   const [data, setData] = useState<Dash | null>(null);
   const [months, setMonths] = useState<Month[]>([]);
   const [err, setErr] = useState("");
-  const [ovTab, setOvTab] = useState<"revenue" | "dues" | "activity">("revenue");
   const org = me?.organizations[0];
 
   async function load() {
@@ -62,11 +61,56 @@ export default function DashboardHome() {
     docs: ov.reduce((a, c) => a + c.documents, 0),
     tasks: ov.reduce((a, c) => a + c.openTasks, 0)
   };
-  const ovTabs: Array<[typeof ovTab, string]> = [["revenue", "💰 Revenue"], ["dues", "🧾 Payments Due"], ["activity", "📌 Activity"]];
+interface OvCardDef {
+  label: string; value: string; sub?: string; href: string;
+  strip: string; num: string; chip: string; icon: React.ComponentType<{ size?: number | string }>;
+}
+
+function OvCard({ c }: { c: OvCardDef }) {
+  const Icon = c.icon;
+  return (
+    <Link
+      href={c.href}
+      className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-card transition-transform hover:-translate-y-0.5"
+    >
+      <div className="h-1" style={{ background: c.strip }} />
+      <div className="p-2.5 sm:p-3">
+        <div className="flex items-start justify-between gap-1">
+          <p className="text-[9px] font-bold uppercase leading-tight tracking-wide text-ink-faint sm:text-[10px]">{c.label}</p>
+          <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${c.chip}`}>
+            <Icon size={15} />
+          </span>
+        </div>
+        <p className={`tnum mt-1 break-words text-[17px] font-bold sm:text-[20px] ${c.num}`}>{c.value}</p>
+        {c.sub ? <p className="mt-0.5 text-[10px] leading-tight text-ink-faint sm:text-[11px]">{c.sub}</p> : null}
+      </div>
+    </Link>
+  );
+}
+
+function OvHeader({ action }: { action?: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2.5">
+      <span className="h-6 w-1.5 shrink-0 rounded-full bg-gradient-to-b from-violet-500 to-indigo-600" />
+      <h2 className="text-[17px] font-bold tracking-tight text-ink sm:text-lg">Business Overview</h2>
+      <span className="h-px flex-1 bg-slate-200" />
+      {action}
+    </div>
+  );
+}
   const hour = new Date().getHours();
   const greet = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const greetIcon = hour < 12 ? "☀️" : hour < 17 ? "🌤️" : "🌙";
   const today = new Intl.DateTimeFormat("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" }).format(new Date());
+
+  const ovCards: OvCardDef[] = [
+    { label: "Total Clients", value: String(data.activeClients), sub: `${data.businessOverview.length} on books`, href: "/dashboard/clients", strip: "linear-gradient(90deg,#7C3AED,#4F46E5)", num: "text-violet-700", chip: "bg-violet-100 text-violet-700", icon: Users },
+    { label: "Sales Turnover", value: inr(ovSum.sales), sub: `${ovSum.salesCount} entries`, href: "/dashboard/sales", strip: "linear-gradient(90deg,#14B8A6,#0D9488)", num: "text-teal-700", chip: "bg-teal-100 text-teal-700", icon: ShoppingCart },
+    { label: "Fees to Collect", value: inr(ovSum.outstanding), sub: `of ${inr(ovSum.billed)} billed`, href: "/dashboard/fees", strip: "linear-gradient(90deg,#F59E0B,#D97706)", num: "text-amber-700", chip: "bg-amber-100 text-amber-700", icon: Wallet },
+    { label: "Docs Pending", value: String(ovSum.docs), sub: "across clients", href: "/dashboard/documents", strip: "linear-gradient(90deg,#3B82F6,#1D4ED8)", num: "text-blue-700", chip: "bg-blue-100 text-blue-700", icon: FileUp },
+    { label: "Open Tasks", value: String(ovSum.tasks), sub: "filings pending", href: "/dashboard/tasks", strip: "linear-gradient(90deg,#F43F5E,#BE123C)", num: "text-rose-700", chip: "bg-rose-100 text-rose-700", icon: AlarmClock },
+    { label: "Fees Received", value: inr(ovSum.paid), sub: "collected so far", href: "/dashboard/fees", strip: "linear-gradient(90deg,#10B981,#047857)", num: "text-emerald-700", chip: "bg-emerald-100 text-emerald-700", icon: BadgeCheck }
+  ];
 
   const tiles = [
     { label: "Deadlines due", sub: "next 14 days", value: data.upcomingDeadlines.length, bg: "bg-violet-50", text: "text-violet-950", border: "border-violet-200", icon: "📅", href: "/dashboard/tasks" },
@@ -116,20 +160,12 @@ export default function DashboardHome() {
             <span className="tnum text-xl font-bold text-rose-700">{inr(data.outstandingFees)}</span>
           </Link>
           {data.businessOverview.length > 0 && (
-          <div className="mt-3 rounded-3xl border border-slate-200/80 bg-white p-4 shadow-card">
-            <div className="flex items-center justify-between">
-              <p className="text-[15px] font-bold text-ink">🏪 Business overview</p>
-              <Link href="/dashboard/clients" className="text-[13px] font-medium text-primary hover:underline">All clients</Link>
-            </div>
-            <div className="mt-2.5 flex gap-1.5">
-              {ovTabs.map(([v, l]) => (
-                <button key={v} onClick={() => setOvTab(v)} className={`flex-1 rounded-full px-2 py-1.5 text-[12px] font-medium transition-colors ${ovTab === v ? "bg-primary text-white" : "bg-background text-ink-soft"}`}>{l}</button>
-              ))}
-            </div>
-            <div className="mt-3 rounded-2xl bg-background p-4 text-center">
-              {ovTab === "revenue" && (<><p className="tnum text-[26px] font-bold text-ink">{inr(ovSum.sales)}</p><p className="mt-0.5 text-xs text-ink-soft">{ovSum.salesCount} sales entries · purchases {inr(ovSum.purchases)}</p></>)}
-              {ovTab === "dues" && (<><p className="tnum text-[26px] font-bold text-amber-700">{inr(ovSum.outstanding)}</p><p className="mt-0.5 text-xs text-ink-soft">due of {inr(ovSum.billed)} billed · {inr(ovSum.paid)} received</p></>)}
-              {ovTab === "activity" && (<><p className="tnum text-[26px] font-bold text-ink">{ovSum.docs + ovSum.tasks} open</p><p className="mt-0.5 text-xs text-ink-soft">{ovSum.docs} documents · {ovSum.tasks} tasks pending</p></>)}
+          <div className="mt-4">
+            <OvHeader
+              action={<Link href="/dashboard/clients" className="text-[13px] font-medium text-primary hover:underline">All clients</Link>}
+            />
+            <div className="mt-2.5 grid grid-cols-3 gap-2">
+              {ovCards.map((c) => <OvCard key={c.label} c={c} />)}
             </div>
           </div>
           )}
@@ -164,17 +200,25 @@ export default function DashboardHome() {
         </div>
       </div>
     </div>
-    {/* ---------- Desktop dashboard (unchanged) ---------- */}
-    <div className="hidden space-y-6 lg:block">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-[22px] font-bold tracking-tight text-ink">{org.name}</h1>
-          <p className="mt-0.5 text-sm text-ink-soft">Good day — here is your practice at a glance.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link href="/dashboard/clients"><Button size="sm"><Plus size={15} /> Add Client</Button></Link>
-          <Link href="/dashboard/documents"><Button size="sm" variant="outline">Upload Docs</Button></Link>
-          <Link href="/dashboard/tasks"><Button size="sm" variant="outline">Pending Tasks</Button></Link>
+    {/* ---------- Desktop dashboard ---------- */}
+    <div className="hidden space-y-5 lg:block">
+      <div
+        className="dot-grid relative overflow-hidden rounded-card px-6 py-5 text-white shadow-card"
+        style={{ background: "radial-gradient(100% 120% at 90% 0%, rgba(196,181,253,0.35) 0%, transparent 55%), linear-gradient(120deg, #061F35 0%, #0C3B64 60%, #14532D 140%)" }}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="text-[13px] text-white/70">{greet} · {today}</p>
+            <h1 className="mt-0.5 text-[24px] font-bold tracking-tight">{org.name}</h1>
+            <p className="mt-0.5 text-[13px] text-white/70">
+              {data.activeClients} clients · {data.overdueTasks > 0 ? <span className="font-semibold text-amber-300">{data.overdueTasks} overdue</span> : <span className="text-emerald-300">all caught up</span>} · {inr(data.outstandingFees)} to collect
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/dashboard/clients" className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3.5 py-2 text-sm font-semibold text-primary-800 shadow-sm transition-transform hover:-translate-y-px"><Plus size={15} /> Add Client</Link>
+            <Link href="/dashboard/documents" className="inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-semibold text-white ring-1 ring-inset ring-white/40 transition-colors hover:bg-white/10">Upload Docs</Link>
+            <Link href="/dashboard/tasks" className="inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-semibold text-white ring-1 ring-inset ring-white/40 transition-colors hover:bg-white/10">Pending Tasks</Link>
+          </div>
         </div>
       </div>
 
@@ -187,11 +231,11 @@ export default function DashboardHome() {
       )}
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3">
-        <Link href="/dashboard/clients" className="transition-transform hover:-translate-y-0.5"><Stat label="Active clients" value={String(data.activeClients)} icon={<Users size={17} />} /></Link>
-        <Link href="/dashboard/documents" className="transition-transform hover:-translate-y-0.5"><Stat label="Docs needing review" value={String(data.docsPending)} icon={<FileUp size={17} />} /></Link>
-        <Link href="/dashboard/tasks" className="transition-transform hover:-translate-y-0.5"><Stat label="Overdue tasks" value={String(data.overdueTasks)} icon={<AlarmClock size={17} />} /></Link>
-        <Link href="/dashboard/tasks" className="transition-transform hover:-translate-y-0.5"><Stat label="Due in 14 days" value={String(data.upcomingDeadlines.length)} icon={<CalendarClock size={17} />} /></Link>
-        <Link href="/dashboard/tasks" className="transition-transform hover:-translate-y-0.5"><Stat label="Filed / Prepared" value={`${data.filedCount} / ${data.preparedCount}`} icon={<ArrowRight size={17} />} /></Link>
+        <Link href="/dashboard/clients" className="transition-transform hover:-translate-y-0.5"><Stat label="Active clients" value={String(data.activeClients)} icon={<Users size={17} />} tint="bg-violet-50 text-violet-700" /></Link>
+        <Link href="/dashboard/documents" className="transition-transform hover:-translate-y-0.5"><Stat label="Docs needing review" value={String(data.docsPending)} icon={<FileUp size={17} />} tint="bg-emerald-50 text-emerald-700" /></Link>
+        <Link href="/dashboard/tasks" className="transition-transform hover:-translate-y-0.5"><Stat label="Overdue tasks" value={String(data.overdueTasks)} icon={<AlarmClock size={17} />} tint="bg-red-50 text-red-700" /></Link>
+        <Link href="/dashboard/tasks" className="transition-transform hover:-translate-y-0.5"><Stat label="Due in 14 days" value={String(data.upcomingDeadlines.length)} icon={<CalendarClock size={17} />} tint="bg-amber-50 text-amber-700" /></Link>
+        <Link href="/dashboard/tasks" className="transition-transform hover:-translate-y-0.5"><Stat label="Filed / Prepared" value={`${data.filedCount} / ${data.preparedCount}`} icon={<ArrowRight size={17} />} tint="bg-sky-50 text-sky-700" /></Link>
         <Link href="/dashboard/fees" className="transition-transform hover:-translate-y-0.5"><Stat label="Outstanding fees" value={inr(data.outstandingFees)} sub="Across all clients" accent icon={<Wallet size={17} />} /></Link>
       </div>
 
@@ -204,7 +248,11 @@ export default function DashboardHome() {
       ) : (
         <div className="grid gap-4 lg:grid-cols-5">
           <Card className="lg:col-span-3">
-            <CardHeader title="Turnover trend" sub="Invoice totals · last 6 months" />
+            <CardHeader
+              title="Turnover trend"
+              sub={`Last 6 months · sales ${inr(months.reduce((a, m) => a + m.salesTotal, 0))}`}
+              action={<span className="flex items-center gap-3 text-xs font-medium text-ink-soft"><span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-primary" /> Sales</span><span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-secondary" /> Purchases</span></span>}
+            />
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={months} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
@@ -249,35 +297,12 @@ export default function DashboardHome() {
       </div>
       {!isNew && (
       <div className="hidden lg:block">
-        <Card>
-          <CardHeader
-            title="Business overview"
-            sub="Practice totals — client details live on the Clients page"
-            action={<Link href="/dashboard/clients" className="text-[13px] font-medium text-primary hover:underline">All clients</Link>}
-          />
-          <div className="mb-4 flex flex-wrap gap-2">
-            {ovTabs.map(([v, l]) => (
-              <button key={v} onClick={() => setOvTab(v)} className={`rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-colors ${ovTab === v ? "bg-primary text-white" : "bg-white text-ink-soft ring-1 ring-inset ring-slate-200 hover:ring-primary"}`}>{l}</button>
-            ))}
-          </div>
-          <div className="grid gap-3 sm:grid-cols-3">
-            {ovTab === "revenue" && (<>
-              <Stat label="Total sales turnover" value={inr(ovSum.sales)} sub={`${ovSum.salesCount} entries`} />
-              <Stat label="Total purchase inflow" value={inr(ovSum.purchases)} />
-              <Stat label="Margin signal" value={inr(ovSum.sales - ovSum.purchases)} sub="Sales minus purchases" />
-            </>)}
-            {ovTab === "dues" && (<>
-              <Stat label="Outstanding" value={inr(ovSum.outstanding)} accent />
-              <Stat label="Billed" value={inr(ovSum.billed)} />
-              <Stat label="Received" value={inr(ovSum.paid)} />
-            </>)}
-            {ovTab === "activity" && (<>
-              <Stat label="Documents" value={String(ovSum.docs)} />
-              <Stat label="Open tasks" value={String(ovSum.tasks)} />
-              <Stat label="Active clients" value={String(data.activeClients)} />
-            </>)}
-          </div>
-        </Card>
+        <OvHeader
+          action={<Link href="/dashboard/clients" className="text-[13px] font-medium text-primary hover:underline">All clients</Link>}
+        />
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          {ovCards.map((c) => <OvCard key={c.label} c={c} />)}
+        </div>
       </div>
       )}
     </>

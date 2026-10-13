@@ -142,12 +142,12 @@ export function PageHeader({ title, sub, actions }: { title: string; sub?: strin
 }
 
 /* ---------- Stat ---------- */
-export function Stat({ label, value, sub, icon, accent = false }: { label: string; value: string; sub?: string; icon?: ReactNode; accent?: boolean }) {
+export function Stat({ label, value, sub, icon, accent = false, tint }: { label: string; value: string; sub?: string; icon?: ReactNode; accent?: boolean; tint?: string }) {
   return (
     <div className={cn("min-w-0 rounded-card border bg-white p-4 shadow-card transition-shadow hover:shadow-pop sm:p-5", accent ? "border-accent/60" : "border-slate-200/80")}>
       <div className="flex items-center justify-between gap-2">
         <p className="min-w-0 truncate text-[13px] font-medium text-ink-soft">{label}</p>
-        {icon ? <span className={cn("shrink-0 rounded-lg p-1.5", accent ? "bg-accent-50 text-accent-600" : "bg-primary-50 text-primary")}>{icon}</span> : null}
+        {icon ? <span className={cn("shrink-0 rounded-lg p-1.5", tint ?? (accent ? "bg-accent-50 text-accent-600" : "bg-primary-50 text-primary"))}>{icon}</span> : null}
       </div>
       <p className="tnum mt-1.5 break-words text-[20px] font-bold tracking-tight text-ink sm:text-[26px]">{value}</p>
       {sub ? <p className="mt-0.5 truncate text-xs text-ink-faint">{sub}</p> : null}
