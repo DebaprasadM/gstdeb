@@ -5,7 +5,7 @@ import { Plus, Upload, Trash2, ReceiptText } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { API_URL, apiFetch, ApiError, inr, currentPeriod, todayISO } from "@/lib/api";
 import { useToast } from "@/components/ui/toast";
-import { Button, EmptyState, Field, PageHeader, SearchInput, Select, Skeleton, TableShell, TextInput } from "@/components/ui/primitives";
+import { Button, Card, EmptyState, Field, PageHeader, SearchInput, Select, Skeleton, TableShell, TextInput } from "@/components/ui/primitives";
 import { Modal } from "@/components/ui/modal";
 
 const RATES = ["0", "0.1", "0.25", "1", "1.5", "3", "5", "7.5", "12", "18", "28"];
@@ -233,6 +233,14 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
   const title = kind === "sales" ? "Sales register" : "Purchase register";
   // Client column only matters when rows span multiple clients.
   const showClientCol = clientFilter === "all" || !clientFilter;
+  const totals = rows.reduce(
+    (a, r) => ({
+      taxable: a.taxable + Number(r.taxableValue),
+      tax: a.tax + Number(r.cgst) + Number(r.sgst) + Number(r.igst) + Number(r.cess ?? 0),
+      total: a.total + Number(r.totalValue)
+    }),
+    { taxable: 0, tax: 0, total: 0 }
+  );
   return (
     <div className="space-y-5">
       <PageHeader
@@ -240,16 +248,20 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
         sub="Who bought what, line by line · taxes split server-side"
         actions={<><Button size="sm" onClick={openNew}><Plus size={15} /> New invoice</Button><label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-ink transition-colors hover:border-primary hover:text-primary"><Upload size={15} /> Import Excel/CSV<input type="file" accept=".csv,.xls,.xlsx" className="hidden" onChange={(e) => void importFile(e.target.files?.[0])} /></label></>}
       />
-      <div className="flex flex-wrap items-center gap-2">
-        <Select value={clientFilter} onChange={(e) => chooseClient(e.target.value)} className="!w-auto">
-          <option value="">Select a client…</option>
-          <option value="all">All clients</option>
-          {clients.map((c) => <option key={c.id} value={c.id}>{c.businessName}</option>)}
-        </Select>
-        <div className="w-56"><SearchInput value={invoiceSearch} onChange={setInvoiceSearch} placeholder="Search invoice no…" /></div>
-        <TextInput type="month" value={periodFilter} onChange={(e) => setPeriodFilter(e.target.value)} className="!w-auto" aria-label="Filter by month" />
-        <Button size="sm" variant="outline" onClick={() => void load()}>Apply filters</Button>
-      </div>
+      <Card className="!p-3 sm:!p-4">
+        <div className="grid gap-2 sm:grid-cols-[1.4fr_1fr_1fr_auto] sm:items-end">
+          <Field label="Client">
+            <Select value={clientFilter} onChange={(e) => chooseClient(e.target.value)}>
+              <option value="">Select a client…</option>
+              <option value="all">All clients</option>
+              {clients.map((c) => <option key={c.id} value={c.id}>{c.businessName}</option>)}
+            </Select>
+          </Field>
+          <Field label="Invoice no."><SearchInput value={invoiceSearch} onChange={setInvoiceSearch} placeholder="Search…" /></Field>
+          <Field label="Month"><TextInput type="month" value={periodFilter} onChange={(e) => setPeriodFilter(e.target.value)} aria-label="Filter by month" /></Field>
+          <Button size="sm" variant="outline" onClick={() => void load()}>Apply</Button>
+        </div>
+      </Card>
       {showForm ? (
       <Modal title={editingId ? `Edit ${kind === "sales" ? "sales" : "purchase"} invoice` : `New ${kind === "sales" ? "sales" : "purchase"} invoice`} onClose={() => { setShowForm(false); setEditingId(null); }} wide>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -325,10 +337,56 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
         />
       ) : rows.length === 0 ? <EmptyState title={`No ${kind} yet`} hint="Save your first invoice above, or import a month's bills from Excel/CSV." /> :
         <>
+          <div className="grid grid-cols-3 gap-2 sm:gap-3">
+            <div className="rounded-2xl p-3 text-white shadow-card" style={{ background: "linear-gradient(135deg,#0EA5E9,#2563EB)" }}>
+              <p className="text-[10px] font-bold uppercase tracking-wide text-white/80 sm:text-[11px]">{rows.length} bills</p>
+              <p className="tnum mt-0.5 break-words text-[15px] font-bold sm:text-lg">{inr(totals.taxable)}</p>
+              <p className="text-[10px] text-white/80 sm:text-[11px]">taxable</p>
+            </div>
+            <div className="rounded-2xl p-3 text-white shadow-card" style={{ background: "linear-gradient(135deg,#8B5CF6,#6D28D9)" }}>
+              <p className="text-[10px] font-bold uppercase tracking-wide text-white/80 sm:text-[11px]">GST</p>
+              <p className="tnum mt-0.5 break-words text-[15px] font-bold sm:text-lg">{inr(totals.tax)}</p>
+              <p className="text-[10px] text-white/80 sm:text-[11px]">total tax</p>
+            </div>
+            <div className="rounded-2xl p-3 text-white shadow-card" style={{ background: "linear-gradient(135deg,#10B981,#047857)" }}>
+              <p className="text-[10px] font-bold uppercase tracking-wide text-white/80 sm:text-[11px]">Total</p>
+              <p className="tnum mt-0.5 break-words text-[15px] font-bold sm:text-lg">{inr(totals.total)}</p>
+              <p className="text-[10px] text-white/80 sm:text-[11px]">invoice value</p>
+            </div>
+          </div>
+          {/* Mobile cards */}
+          <div className="space-y-2.5 lg:hidden">
+          {rows.map((r) => {
+            const party = kind === "sales" ? (r.customerName ?? "Walk-in") : r.supplierName;
+            return (
+            <button key={r.id} onClick={() => setViewing(r)} className="w-full overflow-hidden rounded-2xl border border-slate-200/70 bg-white text-left shadow-card transition-transform active:scale-[0.99]">
+              <div className="h-1" style={{ background: r.status === "DRAFT" ? "linear-gradient(90deg,#94A3B8,#64748B)" : "linear-gradient(90deg,#0EA5E9,#8B5CF6,#10B981)" }} />
+              <div className="p-3.5">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="flex flex-wrap items-center gap-1.5 text-[15px] font-bold text-primary-800">
+                    <span className="whitespace-nowrap">{r.invoiceNumber}</span>
+                    {r.status === "DRAFT" ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-ink-soft">DRAFT</span> : null}
+                  </p>
+                  <p className="tnum mt-0.5 text-xs text-ink-faint">{String(r.invoiceDate).slice(0, 10)}{showClientCol && r.client?.businessName ? ` · ${r.client.businessName}` : ""}</p>
+                </div>
+                <p className="tnum shrink-0 text-[17px] font-bold text-emerald-700">{inr(Number(r.totalValue))}</p>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
+                <span className="max-w-[45%] truncate rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-800">{party}</span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-primary-50 px-2 py-0.5 font-medium text-primary"><ReceiptText size={12} /> {r.items?.length ?? 0}</span>
+                <span className="tnum ml-auto text-ink-faint">Taxable {inr(Number(r.taxableValue))} · GST {inr(Number(r.cgst) + Number(r.sgst) + Number(r.igst))}</span>
+              </div>
+              </div>
+            </button>
+            );
+          })}
+          </div>
+          <div className="hidden lg:block">
           <TableShell head={showClientCol ? ["Invoice", "Client", partyLabel, "Items", "Taxable", "CGST", "SGST", "IGST", "Total"] : ["Invoice", partyLabel, "Items", "Taxable", "CGST", "SGST", "IGST", "Total"]}>
           {rows.map((r) => (
             <tr key={r.id}>
-              <td className="font-medium text-ink">{r.invoiceNumber}{r.status === "DRAFT" ? <span className="ml-1.5 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-ink-soft">DRAFT</span> : null}<span className="block text-[11px] font-normal text-ink-faint">{String(r.invoiceDate).slice(0, 10)}</span></td>
+              <td className="whitespace-nowrap font-bold text-primary-800">{r.invoiceNumber}{r.status === "DRAFT" ? <span className="ml-1.5 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-ink-soft">DRAFT</span> : null}<span className="block text-[11px] font-normal text-ink-faint">{String(r.invoiceDate).slice(0, 10)}</span></td>
               {showClientCol ? <td><span className="inline-flex items-center rounded-full bg-secondary-50 px-2.5 py-0.5 text-[12px] font-semibold text-secondary-700 ring-1 ring-inset ring-secondary-100">{r.client?.businessName}</span></td> : null}
                 <td className="max-w-[180px] truncate text-ink-soft" title={kind === "sales" ? (r.customerName ?? "") : r.supplierName}>{kind === "sales" ? (r.customerName ?? "—") : r.supplierName}</td>
               <td><button onClick={() => setViewing(r)} className="inline-flex items-center gap-1 rounded-full bg-primary-50 px-2.5 py-1 text-[12px] font-medium text-primary hover:bg-primary-100"><ReceiptText size={13} /> {r.items?.length ?? 0} item{(r.items?.length ?? 0) === 1 ? "" : "s"}</button></td>
@@ -336,10 +394,11 @@ function RegisterPage({ kind }: { kind: "sales" | "purchases" }) {
               <td className="tnum text-ink-soft">{inr(Number(r.cgst))}</td>
               <td className="tnum text-ink-soft">{inr(Number(r.sgst))}</td>
               <td className="tnum text-ink-soft">{inr(Number(r.igst))}</td>
-              <td className="tnum font-semibold text-ink">{inr(Number(r.totalValue))}</td>
+              <td className="tnum font-bold text-emerald-700">{inr(Number(r.totalValue))}</td>
             </tr>
           ))}
         </TableShell>
+          </div>
         </>}
       {viewing ? (
         <Modal title={`${viewing.invoiceNumber} — ${(kind === "sales" ? viewing.customerName : viewing.supplierName) ?? ""}`} onClose={() => setViewing(null)} wide>
