@@ -17,6 +17,9 @@ export default function GstPage() {
   const [period, setPeriod] = useState(() => currentPeriod());
   const [data, setData] = useState<any>(null);
   const [busy, setBusy] = useState(false);
+  const [match, setMatch] = useState<any>(null);
+  const [matchMsg, setMatchMsg] = useState("");
+  const [t3b, setT3b] = useState<any>(null);
 
   useEffect(() => {
     if (!org) return;
@@ -25,10 +28,11 @@ export default function GstPage() {
   }, [org?.id]);
 
   async function load() {
-    if (!clientId) { push("error", "Pick a client first."); return; }
     try {
       const res = await apiFetch<{ data: unknown }>(`/api/v1/organizations/${org!.id}/clients/${clientId}/gst?period=${period}`);
       setData(res.data);
+      const b3 = await apiFetch<{ data: unknown }>(`/api/v1/organizations/${org!.id}/clients/${clientId}/gst/gstr3b?period=${period}`);
+      setT3b(b3.data);
     } catch (e) { push("error", e instanceof ApiError ? e.message : "Failed"); }
   }
 
@@ -40,6 +44,28 @@ export default function GstPage() {
       void load();
     } catch (e) { push("error", e instanceof ApiError ? e.message : "Failed"); }
     finally { setBusy(false); }
+  }
+
+  async function loadMatch() {
+    if (!clientId) return;
+    setMatchMsg("");
+    try {
+      const res = await apiFetch<{ data: unknown }>(`/api/v1/organizations/${org!.id}/clients/${clientId}/itc-match?period=${period}`);
+      setMatch(res.data);
+    } catch (e) { setMatchMsg(e instanceof ApiError ? e.message : "Match failed"); }
+  }
+
+  async function import2B(f: File | undefined) {
+    if (!f || !clientId) { push("error", "Pick a client and a 2B file first."); return; }
+    const fd = new FormData();
+    fd.append("file", f);
+    fd.append("period", period);
+    const csrf = document.cookie.match(/(?:^|; )csrf=([^;]*)/)?.[1];
+    const res = await fetch(`${API_URL}/api/v1/organizations/${org!.id}/clients/${clientId}/gstr2b/import`, { method: "POST", credentials: "include", headers: csrf ? { "x-csrf-token": decodeURIComponent(csrf) } : {}, body: fd });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) { push("error", body?.error?.message ?? "2B import failed"); return; }
+    push("success", `2B: ${body.data.imported} rows in, ${body.data.errorCount} errors.`);
+    void loadMatch();
   }
 
   if (!org) return <EmptyState title="No organization" hint="Your account has no firm attached." />;
@@ -92,6 +118,73 @@ export default function GstPage() {
               <div className="mt-4"><Button onClick={markPrepared} disabled={busy}>{busy ? "Saving…" : "Mark GSTR-3B Prepared"}</Button></div>
             </Card>
           </div>
+          {t3b ? (
+          <Card>
+            <CardHeader
+              title="GSTR-3B tables — ready to copy to portal"
+              sub="Estimates from books · verify zero-rated/import/exempt lines manually"
+              action={<a className="rounded border border-slate-300 bg-white px-3 py-1.5 text-[13px] font-medium text-ink" href={`${API_URL}/api/v1/organizations/${org!.id}/clients/${clientId}/gst/gstr3b?period=${period}&format=csv`}>3B CSV</a>}
+            />
+            <div className="overflow-x-auto">
+              <table className="table-premium w-full min-w-[560px] text-sm">
+                <thead><tr><th>Table</th><th>Line</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>IGST</th><th>Cess</th></tr></thead>
+                <tbody>
+                  {[
+                    ["3.1", "a · outward taxable", t3b.table31.a_outward_taxable],
+                    ["3.1", "c · reverse charge", t3b.table31.c_reverse_charge],
+                    ["4", "B · ITC available (ELIGIBLE only)", { ...t3b.table4.b_itc_available, taxable: "—" }],
+                    ["4", "C · ineligible", { ...t3b.table4.c_ineligible, taxable: "—" }],
+                    ["6.1", "Cash payable", { ...t3b.table61.cash_payable, taxable: "—" }]
+                  ].map(([t, l, r]: any) => (
+                    <tr key={`${t}-${l}`}>
+                      <td className="font-semibold">{t}</td><td className="text-ink-soft">{l}</td>
+                      <td className="tnum">{r.taxable}</td><td className="tnum">{r.cgst}</td>
+                      <td className="tnum">{r.sgst}</td><td className="tnum">{r.igst}</td><td className="tnum">{r.cess}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-2 text-xs text-ink-faint">Pending-ITC purchases excluded by design · imports need bill-of-entry data · RCM outward in 3.1(c).</p>
+          </Card>
+          ) : null}
+          <Card>
+            <CardHeader
+              title="ITC match — books vs GSTR-2B"
+              sub="Upload the portal 2B download; suppliers who didn't report put your ITC at risk"
+              action={<Button size="sm" variant="outline" onClick={loadMatch}>Run match</Button>}
+            />
+            <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-ink-soft">2B file (CSV/Excel from portal):</span>
+              <input type="file" accept=".csv,.xls,.xlsx" onChange={(e) => void import2B(e.target.files?.[0])} />
+            </div>
+            {matchMsg ? <p className="text-sm text-red-600">{matchMsg}</p> : null}
+            {!match ? <p className="text-sm text-ink-faint">Import the 2B file (auto-runs match) or press Run match.</p> : !match.has2B ? (
+              <p className="text-sm text-ink-faint">No 2B rows for {match.period} yet — import the portal download above.</p>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <Stat label="Matched" value={String(match.summary.matched)} />
+                  <Stat label="Value gaps" value={String(match.summary.mismatch)} />
+                  <Stat label="Missing in 2B" value={String(match.summary.missingIn2b)} />
+                  <Stat label="ITC at risk" value={inr(Number(match.summary.itcAtRisk))} accent />
+                </div>
+                {Number(match.summary.itcUnclaimed) > 0 ? <p className="mt-2 text-sm text-ink-soft">Unclaimed in books (present in 2B only): <strong className="text-ink">{inr(Number(match.summary.itcUnclaimed))}</strong> — enter these purchases.</p> : null}
+                <div className="mt-3 max-h-72 space-y-1.5 overflow-y-auto">
+                  {(match.results as Array<{ invoiceNumber: string; supplier: string | null; status: string; itcAmount: string; taxableDiff: string; taxDiff: string }>).filter((r) => r.status !== "MATCHED").map((r) => (
+                    <div key={`${r.status}-${r.invoiceNumber}`} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-background px-3 py-2 text-sm">
+                      <p className="font-medium text-ink">{r.invoiceNumber} <span className="font-normal text-ink-soft">· {r.supplier ?? "—"}</span></p>
+                      <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${r.status === "MISSING_IN_2B" ? "bg-red-50 text-red-700" : r.status === "VALUE_MISMATCH" ? "bg-amber-50 text-amber-800" : "bg-blue-50 text-blue-700"}`}>
+                        {r.status === "MISSING_IN_2B" ? `Not reported · ITC ${inr(Number(r.itcAmount))} at risk` : r.status === "VALUE_MISMATCH" ? `Diff tax ${inr(Number(r.taxDiff))}` : `Not in books · ITC ${inr(Number(r.itcAmount))}`}
+                      </span>
+                    </div>
+                  ))}
+                  {(match.results as Array<{ status: string }>).every((r) => r.status === "MATCHED") ? <p className="text-sm text-emerald-700">✓ Everything matched — ITC is safe for this period.</p> : null}
+                </div>
+                <p className="mt-2 text-xs text-ink-faint">Advisory only — claim ITC for invoices present in 2B (Sec 16(2)). Tolerance ₹1.</p>
+              </>
+            )}
+          </Card>
         </>
       )}
     </div>
