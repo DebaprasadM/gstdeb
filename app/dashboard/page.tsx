@@ -83,7 +83,7 @@ export default function DashboardHome() {
           className="rounded-[1.75rem] px-5 pb-10 pt-5 text-white shadow-pop"
           style={{
             backgroundImage:
-              "radial-gradient(rgba(255,255,255,0.30) 1.6px, transparent 1.6px), radial-gradient(120% 90% at 85% -10%, rgba(233,213,255,0.55) 0%, transparent 55%), radial-gradient(110% 85% at -10% 110%, rgba(165,243,252,0.4) 0%, transparent 60%), linear-gradient(140deg, #4C1D95 0%, #6D28D9 55%, #8B5CF6 130%)",
+              "radial-gradient(rgba(255,255,255,0.32) 1.6px, transparent 1.6px), radial-gradient(120% 90% at 85% -10%, rgba(199,210,254,0.55) 0%, transparent 55%), radial-gradient(110% 85% at -10% 110%, rgba(34,211,238,0.4) 0%, transparent 60%), linear-gradient(140deg, #2828C8 0%, #4343E8 55%, #5B5BF0 130%)",
             backgroundSize: "20px 20px, cover, cover, cover"
           }}
         >
